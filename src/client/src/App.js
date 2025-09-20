@@ -180,6 +180,7 @@ const OnlineLexioGame = () => {
 
     newSocket.on('playerJoined', (data) => {
       setRoom(data.room);
+      setGameMode('lobby'); // 참가자도 로비로 이동
       setError('');
     });
 
@@ -418,11 +419,10 @@ const OnlineLexioGame = () => {
             {isHost && (
               <button
                 onClick={startGame}
-                disabled={room?.players?.length < 3}
-                className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
               >
                 <Play className="w-5 h-5" />
-                게임 시작 (최소 3명)
+                게임 시작 {room?.players?.length < 3 ? '(AI 자동 추가)' : `(${room?.players?.length}명)`}
               </button>
             )}
 
@@ -565,17 +565,21 @@ const OnlineLexioGame = () => {
                     <p className="text-sm text-gray-600">{player.cardCount}장</p>
                   </div>
                   
-                  {player.id === myPlayerId && player.cards ? (
+                  {player.id === myPlayerId ? (
                     <div className="grid grid-cols-6 gap-1">
-                      {player.cards.map(card => (
-                        <Card
-                          key={card.id}
-                          card={card}
-                          selected={selectedCards.find(c => c.id === card.id)}
-                          onClick={() => isMyTurn && toggleCardSelection(card)}
-                          size="small"
-                        />
-                      ))}
+                      {myPlayer && myPlayer.cards && myPlayer.cards.length > 0 ? (
+                        myPlayer.cards.map(card => (
+                          <Card
+                            key={card.id}
+                            card={card}
+                            selected={selectedCards.find(c => c.id === card.id)}
+                            onClick={() => isMyTurn && toggleCardSelection(card)}
+                            size="small"
+                          />
+                        ))
+                      ) : (
+                        <div className="text-center text-gray-500">카드 로딩 중...</div>
+                      )}
                     </div>
                   ) : (
                     <div className="flex justify-center">

@@ -330,6 +330,18 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // AI 플레이어 추가 (3명 미만일 때)
+    while (room.players.length < 3) {
+      const aiPlayer = {
+        id: `ai-${Date.now()}-${Math.random()}`,
+        name: `AI ${room.players.length}`,
+        cards: [],
+        isHost: false,
+        isAI: true
+      };
+      room.players.push(aiPlayer);
+    }
+    
     if (startGame(playerData.roomId)) {
       io.to(playerData.roomId).emit('gameStarted', {
         room: sanitizeRoom(room)
@@ -503,8 +515,8 @@ function sanitizeRoom(room, requesterId = null) {
     players: room.players.map(player => ({
       id: player.id,
       name: player.name,
-      cardCount: player.cards.length,
-      cards: player.id === requesterId ? player.cards : [], // 본인 카드만 전송
+      cardCount: player.cards ? player.cards.length : 0,
+      cards: player.id === requesterId ? (player.cards || []) : [], // 본인 카드만 전송
       isHost: player.isHost
     }))
   };
