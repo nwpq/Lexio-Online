@@ -218,6 +218,24 @@ const OnlineLexioGame = () => {
     return () => newSocket.close();
   }, []);
 
+  // AI 턴 자동 처리 (복원된 방식)
+  useEffect(() => {
+    if (gameMode === 'playing' && room && room.players && room.currentPlayer < room.players.length) {
+      const currentPlayerData = room.players[room.currentPlayer];
+      console.log('Current player check:', currentPlayerData?.name, 'isAI:', currentPlayerData?.isAI);
+      
+      if (currentPlayerData && currentPlayerData.isAI) {
+        console.log('AI turn detected, sending aiPlay event');
+        const timer = setTimeout(() => {
+          if (socket && socket.connected) {
+            socket.emit('aiPlay', { playerIndex: room.currentPlayer });
+          }
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [room?.currentPlayer, gameMode, room?.players, socket]);
+
   const createRoom = () => {
     if (!playerName.trim()) {
       setError('플레이어 이름을 입력해주세요.');
@@ -255,6 +273,22 @@ const OnlineLexioGame = () => {
   };
 
   const startGame = () => {
+    socket.emit('startGame');
+  };
+
+  const addAI = () => {
+    if (socket) {
+      socket.emit('addAI');
+    }
+  };
+
+  const removeAI = (aiPlayerId) => {
+    if (socket) {
+      socket.emit('removeAI', { aiPlayerId });
+    }
+  };
+
+  const nextRound = () => {
     socket.emit('startGame');
   };
 
@@ -306,22 +340,6 @@ const OnlineLexioGame = () => {
     setRoomId('');
     setSelectedCards([]);
     setError('');
-  };
-
-  const addAI = () => {
-    if (socket) {
-      socket.emit('addAI');
-    }
-  };
-
-  const removeAI = (aiPlayerId) => {
-    if (socket) {
-      socket.emit('removeAI', { aiPlayerId });
-    }
-  };
-
-  const nextRound = () => {
-    socket.emit('startGame');
   };
 
   if (!socket) {
@@ -504,9 +522,6 @@ const OnlineLexioGame = () => {
     const currentPlayerData = room.players[room.currentPlayer];
     const isMyTurn = currentPlayerData?.id === myPlayerId;
 
-    console.log('My player data:', myPlayer);
-    console.log('My cards:', myPlayer?.cards);
-
     return (
       <div className="max-w-6xl mx-auto p-4 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">
         <div className="text-center mb-6">
@@ -585,6 +600,7 @@ const OnlineLexioGame = () => {
                 <div className="text-lg font-semibold">
                   현재 턴: <span className="text-blue-600">{currentPlayerData?.name}</span>
                   {isMyTurn && <span className="text-green-600 ml-2">(나의 턴)</span>}
+                  {currentPlayerData?.isAI && <span className="text-purple-600 ml-2">(AI)</span>}
                 </div>
                 <div className="text-sm text-gray-600">
                   {room.lastPlay.hand && `마지막: ${getHandName(room.lastPlay.hand)} (${room.lastPlay.cards.length}장)`}
@@ -603,84 +619,102 @@ const OnlineLexioGame = () => {
               )}
             </div>
 
-            {/* 플레이어들 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {room.players.map((player, index) => (
-                <div 
-                  key={player.id}
-                  className={`bg-white rounded-lg p-4 shadow-lg ${
-                    index === room.currentPlayer ? 'ring-2 ring-blue-500' : ''
-                  } ${
-                    player.id === myPlayerId ? 'ring-2 ring-green-500' : ''
-                  }`}
-                >
-                  <div className="text-center mb-2">
-                    <h3 className="font-semibold flex items-center justify-center gap-2">
-                      {player.name}
-                      {player.isHost && <Crown className="w-4 h-4 text-yellow-500" />}
-                      {player.id === myPlayerId && <span className="text-xs text-green-600">(나)</span>}
-                    </h3>
-                    <p className="text-sm text-gray-600">{player.cardCount}장</p>
-                  </div>
-                  
-                  {player.id === myPlayerId ? (
-                    <div className="grid grid-cols-6 gap-1">
-                      {myPlayer && myPlayer.cards && myPlayer.cards.length > 0 ? (
-                        myPlayer.cards.map(card => (
-                          <Card
-                            key={card.id}
-                            card={card}
-                            selected={selectedCards.find(c => c.id === card.id)}
-                            onClick={() => isMyTurn && toggleCardSelection(card)}
-                            size="small"
-                          />
-                        ))
-                      ) : (
-                        <div className="text-center text-gray-500">카드 로딩 중...</div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex justify-center">
-                      <div className="text-4xl text-gray-400">🎭</div>
-                    </div>
-                  )}
-                </div>
-              ))}
+            {/* 다른 플레이어들 - 상단에 작게 표시 */}
+            <div className="bg-white rounded-lg p-3 shadow-lg mb-4">
+              <h3 className="font-semibold mb-2 text-sm text-center">다른 플레이어</h3>
+              <div className="flex justify-center gap-3 flex-wrap">
+                {room.players
+                  .filter(player => player.id !== myPlayerId)
+                  .map((player) => {
+                    const playerIndex = room.players.findIndex(p => p.id === player.id);
+                    return (
+                      <div 
+                        key={player.id}
+                        className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border ${
+                          playerIndex === room.currentPlayer 
+                            ? 'border-blue-500 bg-blue-50' 
+                            : 'border-gray-200 bg-gray-50'
+                        }`}
+                      >
+                        <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                          {player.name.charAt(0)}
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs font-medium truncate max-w-16">{player.name}</div>
+                          <div className="text-xs text-gray-600">{player.cardCount}장</div>
+                        </div>
+                        <div className="flex gap-1">
+                          {player.isHost && <Crown className="w-3 h-3 text-yellow-500" />}
+                          {player.isAI && <span className="text-xs text-purple-600">AI</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
 
-            {/* 플레이 버튼들 */}
-            {isMyTurn && (
-              <div className="bg-white rounded-lg p-4 shadow-lg mb-6">
-                <div className="flex justify-center gap-4">
-                  <button
-                    onClick={playCards}
-                    disabled={selectedCards.length === 0}
-                    className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    카드 내기 ({selectedCards.length})
-                  </button>
-                  <button
-                    onClick={pass}
-                    disabled={room.lastPlay.cards.length === 0}
-                    className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-                  >
-                    패스
-                  </button>
+            {/* 내 카드 - 큰 영역 */}
+            {myPlayer && (
+              <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
+                <h3 className="font-semibold mb-3 text-center">내 카드</h3>
+                <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 justify-items-center">
+                  {myPlayer && myPlayer.cards && myPlayer.cards.length > 0 ? (
+                    myPlayer.cards.map(card => (
+                      <Card
+                        key={card.id}
+                        card={card}
+                        selected={selectedCards.find(c => c.id === card.id)}
+                        onClick={() => isMyTurn && toggleCardSelection(card)}
+                        size="normal"
+                      />
+                    ))
+                  ) : (
+                    <div className="col-span-full text-center text-gray-500 py-4">카드 로딩 중...</div>
+                  )}
                 </div>
                 
+                {/* 선택된 카드 미리보기 */}
                 {selectedCards.length > 0 && (
-                  <div className="mt-4 text-center">
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-gray-600 mb-2 text-center">선택된 카드</p>
                     <div className="flex justify-center gap-1 mb-2">
                       {selectedCards.map(card => (
                         <Card key={card.id} card={card} size="small" />
                       ))}
                     </div>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-center font-medium">
                       {(() => {
                         const hand = analyzeHand(selectedCards);
                         return hand ? getHandName(hand) : '올바르지 않은 조합';
                       })()}
                     </p>
+                  </div>
+                )}
+                
+                {/* 플레이 버튼들 - 카드 바로 아래 */}
+                {isMyTurn && (
+                  <div className="mt-4 flex justify-center gap-3">
+                    <button
+                      onClick={playCards}
+                      disabled={selectedCards.length === 0}
+                      className="flex-1 bg-green-500 text-white py-3 px-4 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      카드 내기 ({selectedCards.length})
+                    </button>
+                    <button
+                      onClick={pass}
+                      disabled={room.lastPlay.cards.length === 0}
+                      className="flex-1 bg-red-500 text-white py-3 px-4 rounded-lg hover:bg-red-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
+                    >
+                      패스
+                    </button>
+                  </div>
+                )}
+                
+                {!isMyTurn && (
+                  <div className="mt-4 text-center text-gray-600 py-3 bg-gray-50 rounded-lg">
+                    {currentPlayerData?.name}님의 턴입니다
+                    {currentPlayerData?.isAI && " (AI 플레이 중...)"}
                   </div>
                 )}
               </div>
