@@ -318,7 +318,80 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 게임 시작
+  // AI 플레이어 추가
+  socket.on('addAI', () => {
+    const playerData = players.get(socket.id);
+    if (!playerData) return;
+    
+    const room = rooms.get(playerData.roomId);
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error', { message: '호스트만 AI를 추가할 수 있습니다.' });
+      return;
+    }
+    
+    if (room.players.length >= 5) {
+      socket.emit('error', { message: '최대 5명까지만 참가할 수 있습니다.' });
+      return;
+    }
+    
+    if (room.gameState !== 'waiting') {
+      socket.emit('error', { message: '게임이 진행 중일 때는 AI를 추가할 수 없습니다.' });
+      return;
+    }
+    
+    const aiNames = [
+      '렉시오 마스터', '카드 신동', '전략가', '승부사', 
+      '포커페이스', '블러핑 킹', '카드샤크', '게임 구루',
+      '아이언맨', '카드 마법사', '전술가', '게임 엔진'
+    ];
+    const randomName = aiNames[Math.floor(Math.random() * aiNames.length)];
+    
+    const aiPlayer = {
+      id: `ai-${Date.now()}-${Math.random()}`,
+      name: `${randomName}`,
+      cards: [],
+      isHost: false,
+      isAI: true
+    };
+    
+    room.players.push(aiPlayer);
+    
+    io.to(playerData.roomId).emit('playerJoined', { 
+      player: { id: aiPlayer.id, name: aiPlayer.name },
+      room: sanitizeRoom(room, socket.id)
+    });
+  });
+
+  // AI 플레이어 제거
+  socket.on('removeAI', (data) => {
+    const { aiPlayerId } = data;
+    const playerData = players.get(socket.id);
+    if (!playerData) return;
+    
+    const room = rooms.get(playerData.roomId);
+    if (!room) return;
+    
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player || !player.isHost) {
+      socket.emit('error', { message: '호스트만 AI를 제거할 수 있습니다.' });
+      return;
+    }
+    
+    if (room.gameState !== 'waiting') {
+      socket.emit('error', { message: '게임이 진행 중일 때는 AI를 제거할 수 없습니다.' });
+      return;
+    }
+    
+    room.players = room.players.filter(p => p.id !== aiPlayerId);
+    
+    io.to(playerData.roomId).emit('playerLeft', {
+      playerId: aiPlayerId,
+      room: sanitizeRoom(room, socket.id)
+    });
+  });
   socket.on('startGame', () => {
     const playerData = players.get(socket.id);
     if (!playerData) return;
@@ -470,10 +543,11 @@ io.on('connection', (socket) => {
     room.passCount++;
     
     if (room.passCount >= room.players.length - 1) {
+      // 마지막으로 카드를 낸 플레이어가 선이 됨
+      const lastCardPlayer = room.lastPlay.player;
       room.lastPlay = { cards: [], player: null, hand: null };
       room.passCount = 0;
-      // 마지막으로 카드를 낸 플레이어가 선이 됨 (패스한 플레이어가 아님)
-      room.currentPlayer = room.lastPlay.player !== null ? room.lastPlay.player : room.currentPlayer;
+      room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
       room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
     } else {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;

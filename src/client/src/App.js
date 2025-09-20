@@ -289,6 +289,18 @@ const OnlineLexioGame = () => {
     setError('');
   };
 
+  const addAI = () => {
+    if (socket) {
+      socket.emit('addAI');
+    }
+  };
+
+  const removeAI = (aiPlayerId) => {
+    if (socket) {
+      socket.emit('removeAI', { aiPlayerId });
+    }
+  };
+
   const nextRound = () => {
     socket.emit('startGame');
   };
@@ -403,19 +415,26 @@ const OnlineLexioGame = () => {
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold mb-3">플레이어 목록 ({room?.players?.length || 0}/{room?.playerCount || 4})</h3>
+              <h3 className="font-semibold mb-3">플레이어 목록 ({room?.players?.length || 0}/5)</h3>
               <div className="space-y-2">
                 {room?.players?.map((player, index) => (
-                  <div key={player.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                    <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                      {index + 1}
+                  <div key={player.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium">{player.name}</span>
+                      {player.isHost && <Crown className="w-4 h-4 text-yellow-500" />}
+                      {player.id === myPlayerId && <span className="text-sm text-blue-600">(나)</span>}
+                      {player.isAI && <span className="text-sm text-purple-600">AI</span>}
                     </div>
-                    <span className="font-medium">{player.name}</span>
-                    {player.isHost && (
-                      <Crown className="w-4 h-4 text-yellow-500" />
-                    )}
-                    {player.id === myPlayerId && (
-                      <span className="text-sm text-blue-600">(나)</span>
+                    {isHost && player.isAI && (
+                      <button
+                        onClick={() => removeAI(player.id)}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                      >
+                        제거
+                      </button>
                     )}
                   </div>
                 ))}
@@ -423,13 +442,24 @@ const OnlineLexioGame = () => {
             </div>
 
             {isHost && (
-              <button
-                onClick={startGame}
-                className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
-              >
-                <Play className="w-5 h-5" />
-                게임 시작 {room?.players?.length < 3 ? '(AI 자동 추가)' : `(${room?.players?.length}명)`}
-              </button>
+              <div className="mb-6 space-y-3">
+                <button
+                  onClick={addAI}
+                  disabled={room?.players?.length >= 5}
+                  className="w-full bg-purple-500 text-white py-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+                >
+                  AI 플레이어 추가 ({room?.players?.length || 0}/5)
+                </button>
+                
+                <button
+                  onClick={startGame}
+                  disabled={room?.players?.length < 3}
+                  className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                >
+                  <Play className="w-5 h-5" />
+                  게임 시작 (최소 3명 필요)
+                </button>
+              </div>
             )}
 
             {!isHost && (
