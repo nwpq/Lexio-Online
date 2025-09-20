@@ -29,6 +29,7 @@ const io = socketIo(server, {
 // 게임 상태 관리
 const rooms = new Map();
 const players = new Map(); // socketId -> {id, name, roomId}
+const aiExecutionState = new Map(); // roomId -> { isExecuting: boolean, lastPlayerIndex: number }
 
 // 렉시오 게임 로직 (기존 코드에서 추출)
 const SYMBOLS = {
@@ -397,7 +398,7 @@ function makeStrategicDecision(room, playerIndex, gameState, strategy) {
       return { action: 'play', play: possiblePlays[0] };
       
     case 'desperate_catch_up':
-      // 뒤쳐졌을 때는 적극적으로 플레이
+      // 뒤쳤을 때는 적극적으로 플레이
       if (Math.random() < 0.8) {
         return { action: 'play', play: chooseBestPlay(possiblePlays, gameState) };
       }
@@ -577,145 +578,8 @@ function findPossibleAiPlays(cards, lastPlay) {
   return possiblePlays.sort((a, b) => compareHands(a.hand, b.hand));
 }
 
-// AI 플레이어 함수
-const aiPlay = (room, playerIndex) => {
-  console.log('AI play function called for player:', playerIndex);
-  console.log('Room state:', room?.gameState);
-  console.log('Total players:', room?.players?.length);
-  
-  if (!room || room.gameState !== 'playing' || !room.players[playerIndex]) {
-    console.log('Invalid room or game state or player');
-    return;
-  }
-  
-  const aiPlayer = room.players[playerIndex];
-  console.log('AI player:', aiPlayer?.name, 'isAI:', aiPlayer?.isAI);
-  
-  if (!aiPlayer.isAI) {
-    console.log('Player is not AI:', aiPlayer);
-    return;
-  }
-  
-  const availableCards = aiPlayer.cards;
-  console.log('AI available cards:', availableCards?.length);
-  console.log('AI cards:', availableCards);
-  
-  if (!availableCards || availableCards.length === 0) {
-    console.log('No cards available for AI');
-    return;
-  }
-  
-  const gameState = analyzeGameState(room, playerIndex);
-  const strategy = determineStrategy(room, playerIndex, gameState);
-  console.log('AI strategy:', strategy);
-  
-  if (room.lastPlay.cards.length === 0) {
-    // 선플레이어일 때 전략적 오프닝
-    console.log('AI is starting player');
-    const opening = chooseStrategicOpening(availableCards, gameState, strategy);
-    console.log('AI strategic opening:', opening);
-    executeAiPlay(room, playerIndex, opening.cards, opening.hand);
-  } else {
-    console.log('AI responding to last play:', room.lastPlay);
-    const decision = makeStrategicDecision(room, playerIndex, gameState, strategy);
-    console.log('AI decision:', decision);
-    
-    if (decision.action === 'play') {
-      console.log('AI decided to play:', decision.play);
-      
-      // 전략적 로그 메시지 추가
-      const strategyHints = {
-        'aggressive_finish': ['(승부수!)', '(올인!)', '(마지막 스퍼트!)'],
-        'power_play': ['(강한 수!)', '(파워 플레이!)', '(압도적!)'],
-        'maintain_lead': ['(안정적)', '(계산된 수)', '(여유롭게)'],
-        'catch_up': ['(추격!)', '(역전 노리기)', '(필사적으로)'],
-        'conservative': ['(신중하게)', '(보수적으로)', '(차분하게)'],
-        'balanced': ['(균형잡힌)', '(전략적으로)', '(계산된)']
-      };
-      
-      const hints = strategyHints[strategy] || [''];
-      const hint = hints[Math.floor(Math.random() * hints.length)];
-      
-      executeAiPlay(room, playerIndex, decision.play.cards, decision.play.hand, hint);
-    } else {
-      // 전략적 패스
-      console.log('AI decided to pass');
-      const passReasons = {
-        'maintain_lead': ['(여유있게 패스)', '(상황 관망)', '(시간 끌기)'],
-        'power_play': ['(더 좋은 기회를 위해)', '(숨은 카드 보호)', '(타이밍 기다리는 중)'],
-        'conservative': ['(신중한 판단)', '(위험 회피)', '(보수적 선택)'],
-        'balanced': ['(전략적 패스)', '(계산된 포기)', '(다음 기회를 위해)']
-      };
-      
-      const reasons = passReasons[strategy] || [''];
-      const reason = reasons[Math.floor(Math.random() * reasons.length)];
-      
-      const logEntry = `${aiPlayer.name}: 패스 ${reason}`;
-      room.gameLog.push(logEntry);
-      
-      room.passCount++;
-      
-      if (room.passCount >= room.players.length - 1) {
-        // 마지막으로 카드를 낸 플레이어가 선이 됨
-        const lastCardPlayer = room.lastPlay.player;
-        room.lastPlay = { cards: [], player: null, hand: null };
-        room.passCount = 0;
-        room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
-        const logEntry2 = `${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`;
-        room.gameLog.push(logEntry2);
-      } else {
-        room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
-      }
-      
-      // 각 플레이어에게 개별 카드 정보와 함께 전송
-      room.players.forEach(roomPlayer => {
-        if (!roomPlayer.isAI) {
-          const playerSocket = io.sockets.sockets.get(roomPlayer.id);
-          if (playerSocket) {
-            playerSocket.emit('gameUpdated', {
-              room: sanitizeRoom(room, roomPlayer.id)
-            });
-          }
-        }
-      });
-    }
-  }
-};
-
-// AI 플레이 실행 함수
-function executeAiPlay(room, playerIndex, selectedCards, hand, hint = '') {
-  const player = room.players[playerIndex];
-  
-  // 카드 제거
-  player.cards = player.cards.filter(
-    card => !selectedCards.find(selected => selected.id === card.id)
-  );
-  
-  room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
-  room.passCount = 0;
-  
-  const handNames = {
-    [HAND_RANKS.SINGLE]: '싱글',
-    [HAND_RANKS.PAIR]: '페어',
-    [HAND_RANKS.TRIPLE]: '트리플',
-    [HAND_RANKS.STRAIGHT]: '스트레이트',
-    [HAND_RANKS.FLUSH]: '플러쉬',
-    [HAND_RANKS.FULL_HOUSE]: '풀하우스',
-    [HAND_RANKS.FOUR_KIND]: '포카드',
-    [HAND_RANKS.STRAIGHT_FLUSH]: '스트레이트플러쉬'
-  };
-  
-  const logEntry = `${player.name}: ${handNames[hand.rank]} (${selectedCards.length}장) ${hint}`;
-  room.gameLog.push(logEntry);
-  
-  // 게임 종료 체크
-  if (player.cards.length === 0) {
-    endRound(room, playerIndex);
-  } else {
-    room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
-  }
-  
-  // 각 플레이어에게 개별 카드 정보와 함께 전송
+// 게임 상태 브로드캐스트 함수
+function broadcastGameUpdate(room) {
   room.players.forEach(roomPlayer => {
     if (!roomPlayer.isAI) {
       const playerSocket = io.sockets.sockets.get(roomPlayer.id);
@@ -726,6 +590,158 @@ function executeAiPlay(room, playerIndex, selectedCards, hand, hint = '') {
       }
     }
   });
+}
+
+// AI 플레이어 함수 (수정됨)
+const aiPlay = (room, playerIndex) => {
+  const roomId = room.id;
+  
+  // 중복 실행 방지 체크
+  const executionState = aiExecutionState.get(roomId);
+  if (executionState && executionState.isExecuting) {
+    console.log('AI already executing, skipping duplicate call');
+    return;
+  }
+  
+  // 실행 상태 설정
+  aiExecutionState.set(roomId, { isExecuting: true, lastPlayerIndex: playerIndex });
+  
+  console.log('AI play function called for player:', playerIndex);
+  console.log('Room state:', room?.gameState);
+  console.log('Total players:', room?.players?.length);
+  
+  try {
+    if (!room || room.gameState !== 'playing' || !room.players[playerIndex]) {
+      console.log('Invalid room or game state or player');
+      return;
+    }
+    
+    const aiPlayer = room.players[playerIndex];
+    console.log('AI player:', aiPlayer?.name, 'isAI:', aiPlayer?.isAI);
+    
+    if (!aiPlayer.isAI) {
+      console.log('Player is not AI:', aiPlayer);
+      return;
+    }
+    
+    const availableCards = aiPlayer.cards;
+    console.log('AI available cards:', availableCards?.length);
+    
+    if (!availableCards || availableCards.length === 0) {
+      console.log('No cards available for AI');
+      return;
+    }
+    
+    const gameState = analyzeGameState(room, playerIndex);
+    const strategy = determineStrategy(room, playerIndex, gameState);
+    console.log('AI strategy:', strategy);
+    
+    if (room.lastPlay.cards.length === 0) {
+      console.log('AI is starting player');
+      const opening = chooseStrategicOpening(availableCards, gameState, strategy);
+      console.log('AI strategic opening:', opening);
+      executeAiPlay(room, playerIndex, opening.cards, opening.hand);
+    } else {
+      console.log('AI responding to last play:', room.lastPlay);
+      const decision = makeStrategicDecision(room, playerIndex, gameState, strategy);
+      console.log('AI decision:', decision);
+      
+      if (decision.action === 'play') {
+        console.log('AI decided to play:', decision.play);
+        
+        const strategyHints = {
+          'aggressive_finish': ['(승부수!)', '(올인!)', '(마지막 스퍼트!)'],
+          'power_play': ['(강한 수!)', '(파워 플레이!)', '(압도적!)'],
+          'maintain_lead': ['(안정적)', '(계산된 수)', '(여유롭게)'],
+          'catch_up': ['(추격!)', '(역전 노리기)', '(필사적으로)'],
+          'conservative': ['(신중하게)', '(보수적으로)', '(차분하게)'],
+          'balanced': ['(균형잡힌)', '(전략적으로)', '(계산된)']
+        };
+        
+        const hints = strategyHints[strategy] || [''];
+        const hint = hints[Math.floor(Math.random() * hints.length)];
+        
+        executeAiPlay(room, playerIndex, decision.play.cards, decision.play.hand, hint);
+      } else {
+        console.log('AI decided to pass');
+        const passReasons = {
+          'maintain_lead': ['(여유있게 패스)', '(상황 관망)', '(시간 돌기)'],
+          'power_play': ['(더 좋은 기회를 위해)', '(숨은 카드 보호)', '(타이밍 기다리는 중)'],
+          'conservative': ['(신중한 판단)', '(위험 회피)', '(보수적 선택)'],
+          'balanced': ['(전략적 패스)', '(계산된 포기)', '(다음 기회를 위해)']
+        };
+        
+        const reasons = passReasons[strategy] || [''];
+        const reason = reasons[Math.floor(Math.random() * reasons.length)];
+        
+        const logEntry = `${aiPlayer.name}: 패스 ${reason}`;
+        room.gameLog.push(logEntry);
+        
+        room.passCount++;
+        
+        if (room.passCount >= room.players.length - 1) {
+          const lastCardPlayer = room.lastPlay.player;
+          room.lastPlay = { cards: [], player: null, hand: null };
+          room.passCount = 0;
+          room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
+          const logEntry2 = `${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`;
+          room.gameLog.push(logEntry2);
+        } else {
+          room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+        }
+        
+        // 게임 상태 업데이트 전송
+        broadcastGameUpdate(room);
+      }
+    }
+  } catch (error) {
+    console.error('AI play error:', error);
+  } finally {
+    // 실행 상태 해제
+    aiExecutionState.delete(roomId);
+  }
+};
+
+// AI 플레이 실행 함수 (수정됨)
+function executeAiPlay(room, playerIndex, selectedCards, hand, hint = '') {
+  try {
+    const player = room.players[playerIndex];
+    
+    // 카드 제거
+    player.cards = player.cards.filter(
+      card => !selectedCards.find(selected => selected.id === card.id)
+    );
+    
+    room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
+    room.passCount = 0;
+    
+    const handNames = {
+      [HAND_RANKS.SINGLE]: '싱글',
+      [HAND_RANKS.PAIR]: '페어',
+      [HAND_RANKS.TRIPLE]: '트리플',
+      [HAND_RANKS.STRAIGHT]: '스트레이트',
+      [HAND_RANKS.FLUSH]: '플러쉬',
+      [HAND_RANKS.FULL_HOUSE]: '풀하우스',
+      [HAND_RANKS.FOUR_KIND]: '포카드',
+      [HAND_RANKS.STRAIGHT_FLUSH]: '스트레이트플러쉬'
+    };
+    
+    const logEntry = `${player.name}: ${handNames[hand.rank]} (${selectedCards.length}장) ${hint}`;
+    room.gameLog.push(logEntry);
+    
+    // 게임 종료 체크
+    if (player.cards.length === 0) {
+      endRound(room, playerIndex);
+    } else {
+      room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+    }
+    
+    // 게임 상태 업데이트 전송
+    broadcastGameUpdate(room);
+    
+  } catch (error) {
+    console.error('Execute AI play error:', error);
+  }
 }
 
 // Socket.IO 이벤트 처리
@@ -817,7 +833,7 @@ io.on('connection', (socket) => {
     
     const aiNames = [
       '렉시오 마스터', '카드 신동', '전략가', '승부사', 
-      '포커페이스', '블러핑 킹', '카드샤크', '게임 구루',
+      '포커페이스', '블러프 킹', '카드샤크', '게임 구루',
       '아이언맨', '카드 마법사', '전술가', '게임 엔진'
     ];
     const randomName = aiNames[Math.floor(Math.random() * aiNames.length)];
@@ -1096,24 +1112,40 @@ io.on('connection', (socket) => {
     }
   });
 
-  // AI 플레이 요청 처리 (복원)
+  // AI 플레이 요청 처리 (수정됨)
   socket.on('aiPlay', (data) => {
     try {
       const { playerIndex } = data;
       console.log('AI play requested for player:', playerIndex);
       
-      // 방 찾기
-      let targetRoom = null;
-      for (const [roomId, room] of rooms.entries()) {
-        if (room.players[playerIndex] && room.players[playerIndex].isAI) {
-          targetRoom = room;
-          break;
-        }
+      // 요청한 클라이언트의 방 찾기
+      const playerData = players.get(socket.id);
+      if (!playerData) {
+        console.log('Player data not found for AI play request');
+        return;
       }
       
-      if (targetRoom && targetRoom.gameState === 'playing') {
-        console.log('Processing AI play for room');
-        aiPlay(targetRoom, playerIndex);
+      const room = rooms.get(playerData.roomId);
+      if (!room) {
+        console.log('Room not found for AI play request');
+        return;
+      }
+      
+      // AI 플레이어 검증
+      if (!room.players[playerIndex] || !room.players[playerIndex].isAI) {
+        console.log('Invalid AI player index:', playerIndex);
+        return;
+      }
+      
+      // 현재 턴 검증
+      if (room.currentPlayer !== playerIndex) {
+        console.log('Not AI player turn:', room.currentPlayer, 'vs', playerIndex);
+        return;
+      }
+      
+      if (room.gameState === 'playing') {
+        console.log('Processing AI play for room:', room.id);
+        aiPlay(room, playerIndex);
       }
     } catch (error) {
       console.error('AI play request error:', error);

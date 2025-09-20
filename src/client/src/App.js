@@ -156,6 +156,50 @@ const OnlineLexioGame = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [error, setError] = useState('');
   const [myPlayerId, setMyPlayerId] = useState('');
+  const [aiTurnProcessing, setAiTurnProcessing] = useState(false); // AI 턴 처리 상태 추가
+
+  // AI 턴 자동 처리 useEffect (수정됨)
+  useEffect(() => {
+    // 게임이 진행 중이고, 유효한 현재 플레이어가 있는지 확인
+    if (gameMode !== 'playing' || !room || !room.players || room.currentPlayer >= room.players.length) {
+      return;
+    }
+
+    const currentPlayerData = room.players[room.currentPlayer];
+    
+    // 현재 플레이어가 AI이고, 아직 처리 중이 아닌 경우에만 실행
+    if (currentPlayerData && currentPlayerData.isAI && !aiTurnProcessing) {
+      console.log('AI turn detected, setting up timer');
+      setAiTurnProcessing(true); // AI 처리 시작
+      
+      const timer = setTimeout(() => {
+        if (socket && socket.connected) {
+          console.log('Sending aiPlay event for player:', room.currentPlayer);
+          socket.emit('aiPlay', { playerIndex: room.currentPlayer });
+        }
+      }, 1500);
+      
+      return () => {
+        clearTimeout(timer);
+      };
+    }
+    
+    // 현재 플레이어가 AI가 아니면 처리 상태 해제
+    if (currentPlayerData && !currentPlayerData.isAI) {
+      setAiTurnProcessing(false);
+    }
+    
+  }, [room?.currentPlayer, gameMode, room?.players, socket, aiTurnProcessing]);
+
+  // 게임 상태 업데이트 시 AI 처리 상태 초기화
+  useEffect(() => {
+    if (room && gameMode === 'playing') {
+      const currentPlayerData = room.players?.[room.currentPlayer];
+      if (currentPlayerData && !currentPlayerData.isAI) {
+        setAiTurnProcessing(false);
+      }
+    }
+  }, [room, gameMode]);
 
   // Socket 연결
   useEffect(() => {
@@ -180,12 +224,14 @@ const OnlineLexioGame = () => {
       setRoomId(data.roomId);
       setGameMode('lobby');
       setError('');
+      setAiTurnProcessing(false); // 상태 초기화
     });
 
     newSocket.on('playerJoined', (data) => {
       setRoom(data.room);
       setGameMode('lobby'); // 참가자도 로비로 이동
       setError('');
+      setAiTurnProcessing(false); // 상태 초기화
     });
 
     newSocket.on('gameStarted', (data) => {
@@ -193,6 +239,7 @@ const OnlineLexioGame = () => {
       setRoom(data.room);
       setGameMode('playing');
       setError('');
+      setAiTurnProcessing(false); // 상태 초기화
     });
 
     newSocket.on('gameUpdated', (data) => {
@@ -201,40 +248,28 @@ const OnlineLexioGame = () => {
       setRoom(data.room);
       setSelectedCards([]); // 카드 플레이 후 선택 초기화
       setError('');
+      setAiTurnProcessing(false); // 게임 상태 업데이트 시 AI 처리 상태 초기화
       console.log('Game state updated');
     });
 
     newSocket.on('playerLeft', (data) => {
       setRoom(data.room);
       setError('플레이어가 나갔습니다.');
+      setAiTurnProcessing(false); // 상태 초기화
     });
 
     newSocket.on('error', (data) => {
       console.log('Error received:', data.message);
       setError(data.message);
+      setAiTurnProcessing(false); // 에러 시 상태 초기화
       // 에러 발생 시 선택된 카드 유지 (다시 시도할 수 있도록)
     });
 
-    return () => newSocket.close();
+    return () => {
+      newSocket.close();
+      setAiTurnProcessing(false); // 클린업 시 상태 초기화
+    };
   }, []);
-
-  // AI 턴 자동 처리 (복원된 방식)
-  useEffect(() => {
-    if (gameMode === 'playing' && room && room.players && room.currentPlayer < room.players.length) {
-      const currentPlayerData = room.players[room.currentPlayer];
-      console.log('Current player check:', currentPlayerData?.name, 'isAI:', currentPlayerData?.isAI);
-      
-      if (currentPlayerData && currentPlayerData.isAI) {
-        console.log('AI turn detected, sending aiPlay event');
-        const timer = setTimeout(() => {
-          if (socket && socket.connected) {
-            socket.emit('aiPlay', { playerIndex: room.currentPlayer });
-          }
-        }, 1500);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [room?.currentPlayer, gameMode, room?.players, socket]);
 
   const createRoom = () => {
     if (!playerName.trim()) {
@@ -340,6 +375,7 @@ const OnlineLexioGame = () => {
     setRoomId('');
     setSelectedCards([]);
     setError('');
+    setAiTurnProcessing(false);
   };
 
   if (!socket) {
