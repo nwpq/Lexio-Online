@@ -446,19 +446,35 @@ io.on('connection', (socket) => {
   // 카드 플레이
   socket.on('playCards', (data) => {
     const playerData = players.get(socket.id);
-    if (!playerData) return;
+    if (!playerData) {
+      console.log('Player data not found for:', socket.id);
+      return;
+    }
     
     const room = rooms.get(playerData.roomId);
-    if (!room || room.gameState !== 'playing') return;
+    if (!room || room.gameState !== 'playing') {
+      console.log('Room not found or not playing:', room?.gameState);
+      return;
+    }
     
     const playerIndex = room.players.findIndex(p => p.id === socket.id);
+    console.log('Player index:', playerIndex, 'Current player:', room.currentPlayer);
+    
     if (playerIndex !== room.currentPlayer) {
       socket.emit('error', { message: '당신의 턴이 아닙니다.' });
       return;
     }
     
     const { selectedCards } = data;
+    console.log('Selected cards:', selectedCards);
+    
+    if (!selectedCards || selectedCards.length === 0) {
+      socket.emit('error', { message: '카드를 선택해주세요.' });
+      return;
+    }
+    
     const hand = analyzeHand(selectedCards);
+    console.log('Analyzed hand:', hand);
     
     if (!hand) {
       socket.emit('error', { message: '올바르지 않은 조합입니다.' });
@@ -467,19 +483,36 @@ io.on('connection', (socket) => {
     
     // 조건 검사
     if (room.lastPlay.hand) {
+      console.log('Checking against last play:', room.lastPlay);
+      
       if (selectedCards.length !== room.lastPlay.cards.length) {
         socket.emit('error', { message: `${room.lastPlay.cards.length}장의 카드를 내야 합니다.` });
         return;
       }
       
-      if (compareHands(hand, room.lastPlay.hand) <= 0) {
+      const comparison = compareHands(hand, room.lastPlay.hand);
+      console.log('Hand comparison result:', comparison);
+      
+      if (comparison <= 0) {
         socket.emit('error', { message: '더 높은 조합을 내야 합니다.' });
         return;
       }
     }
     
-    // 카드 제거
+    // 플레이어가 실제로 해당 카드들을 가지고 있는지 확인
     const player = room.players[playerIndex];
+    const hasAllCards = selectedCards.every(selectedCard => 
+      player.cards.some(playerCard => playerCard.id === selectedCard.id)
+    );
+    
+    if (!hasAllCards) {
+      socket.emit('error', { message: '가지고 있지 않은 카드입니다.' });
+      return;
+    }
+    
+    console.log('Card play validation passed, executing play');
+    
+    // 카드 제거
     player.cards = player.cards.filter(
       card => !selectedCards.find(selected => selected.id === card.id)
     );
