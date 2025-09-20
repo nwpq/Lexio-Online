@@ -185,12 +185,14 @@ const OnlineLexioGame = () => {
     });
 
     newSocket.on('gameStarted', (data) => {
+      console.log('Game started with data:', data);
       setRoom(data.room);
       setGameMode('playing');
       setError('');
     });
 
     newSocket.on('gameUpdated', (data) => {
+      console.log('Game updated with data:', data);
       setRoom(data.room);
       setError('');
     });
@@ -448,6 +450,9 @@ const OnlineLexioGame = () => {
     const myPlayer = room.players.find(p => p.id === myPlayerId);
     const currentPlayerData = room.players[room.currentPlayer];
     const isMyTurn = currentPlayerData?.id === myPlayerId;
+
+    console.log('My player data:', myPlayer);
+    console.log('My cards:', myPlayer?.cards);
 
     return (
       <div className="max-w-6xl mx-auto p-4 bg-gradient-to-br from-blue-50 to-purple-50 min-h-screen">

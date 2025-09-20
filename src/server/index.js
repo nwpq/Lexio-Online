@@ -268,7 +268,8 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: data.playerName,
       cards: [],
-      isHost: true
+      isHost: true,
+      isAI: false
     };
     
     room.players.push(player);
@@ -289,7 +290,7 @@ io.on('connection', (socket) => {
       return;
     }
     
-    if (room.players.length >= room.playerCount) {
+    if (room.players.filter(p => !p.isAI).length >= room.playerCount) {
       socket.emit('error', { message: '방이 가득 찼습니다.' });
       return;
     }
@@ -303,7 +304,8 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: playerName,
       cards: [],
-      isHost: false
+      isHost: false,
+      isAI: false
     };
     
     room.players.push(player);
@@ -345,6 +347,18 @@ io.on('connection', (socket) => {
     if (startGame(playerData.roomId)) {
       io.to(playerData.roomId).emit('gameStarted', {
         room: sanitizeRoom(room)
+      });
+      
+      // 각 플레이어에게 개별적으로 카드 정보 전송
+      room.players.forEach(player => {
+        if (!player.isAI) {
+          const playerSocket = io.sockets.sockets.get(player.id);
+          if (playerSocket) {
+            playerSocket.emit('gameUpdated', {
+              room: sanitizeRoom(room, player.id)
+            });
+          }
+        }
       });
     }
   });
