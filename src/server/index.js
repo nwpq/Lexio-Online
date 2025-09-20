@@ -581,7 +581,7 @@ function findPossibleAiPlays(cards, lastPlay) {
 // 게임 상태 브로드캐스트 함수
 function broadcastGameUpdate(room) {
   room.players.forEach(roomPlayer => {
-    if (!roomPlayer.isAI && !roomPlayer.isDisconnected) {
+    if (!roomPlayer.isAI) {
       const playerSocket = io.sockets.sockets.get(roomPlayer.id);
       if (playerSocket) {
         playerSocket.emit('gameUpdated', {
@@ -693,7 +693,7 @@ const aiPlay = (room, playerIndex) => {
           const logEntry2 = `${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`;
           room.gameLog.push(logEntry2);
         } else {
-          room.currentPlayer = getNextConnectedPlayer(room, room.currentPlayer);
+          room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
         }
         
         // 게임 상태 업데이트 전송
@@ -1038,46 +1038,13 @@ io.on('connection', (socket) => {
       room.gameLog.push(logEntry);
       console.log('Game log updated:', logEntry);
       
-//연결된 플레이어 체크 함수
-function getNextConnectedPlayer(room, currentIndex) {
-  let nextPlayer = (currentIndex + 1) % room.players.length;
-  let attempts = 0;
-  
-  while (attempts < room.players.length) {
-    const player = room.players[nextPlayer];
-    // AI이거나 연결된 플레이어면 선택
-    if (player.isAI || !player.isDisconnected) {
-      return nextPlayer;
-    }
-    nextPlayer = (nextPlayer + 1) % room.players.length;
-    attempts++;
-  }
-  
-  return currentIndex; // 모든 플레이어가 연결 끊긴 경우 현재 플레이어 유지
-}
-
-// 카드 플레이 처리에서 턴 넘기기 로직 수정
       // 게임 종료 체크
       if (player.cards.length === 0) {
         console.log('Player won, ending round');
         endRound(room, playerIndex);
       } else {
-        // 다음 연결된 플레이어로 턴 넘기기
-        room.currentPlayer = getNextConnectedPlayer(room, room.currentPlayer);
+        room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
         console.log('Next player:', room.currentPlayer);
-      }
-
-// 패스 처리에서도 턴 넘기기 로직 수정
-      if (room.passCount >= room.players.length - 1) {
-        // 마지막으로 카드를 낸 플레이어가 선이 됨
-        const lastCardPlayer = room.lastPlay.player;
-        room.lastPlay = { cards: [], player: null, hand: null };
-        room.passCount = 0;
-        room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
-        room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
-      } else {
-        // 다음 연결된 플레이어로 턴 넘기기
-        room.currentPlayer = getNextConnectedPlayer(room, room.currentPlayer);
       }
       
       // 각 플레이어에게 개별 카드 정보와 함께 전송
@@ -1132,13 +1099,12 @@ function getNextConnectedPlayer(room, currentIndex) {
         room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
         room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
       } else {
-        // 다음 연결된 플레이어로 턴 넘기기
-        room.currentPlayer = getNextConnectedPlayer(room, room.currentPlayer);
+        room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
       }
       
       // 각 플레이어에게 개별 카드 정보와 함께 전송
       room.players.forEach(roomPlayer => {
-        if (!roomPlayer.isAI && !roomPlayer.isDisconnected) {
+        if (!roomPlayer.isAI) {
           const playerSocket = io.sockets.sockets.get(roomPlayer.id);
           if (playerSocket) {
             playerSocket.emit('gameUpdated', {
@@ -1226,72 +1192,20 @@ function getNextConnectedPlayer(room, currentIndex) {
     if (playerData) {
       const room = rooms.get(playerData.roomId);
       if (room) {
-        if (room.gameState === 'waiting') {
-          // 로비에서는 플레이어를 완전히 제거
-          room.players = room.players.filter(p => p.id !== socket.id);
-          
-          if (room.players.length === 0) {
-            rooms.delete(playerData.roomId);
-          } else {
-            // 호스트가 나간 경우 다음 플레이어를 호스트로
-            if (!room.players.find(p => p.isHost)) {
-              const nextHost = room.players.find(p => !p.isAI);
-              if (nextHost) {
-                nextHost.isHost = true;
-              } else if (room.players.length > 0) {
-                room.players[0].isHost = true;
-              }
-            }
-            
-            socket.to(playerData.roomId).emit('playerLeft', {
-              playerId: socket.id,
-              room: sanitizeRoom(room)
-            });
-          }
+        room.players = room.players.filter(p => p.id !== socket.id);
+        
+        if (room.players.length === 0) {
+          rooms.delete(playerData.roomId);
         } else {
-          // 게임 중에는 연결 끊김 상태로 표시
-          const player = room.players.find(p => p.id === socket.id);
-          if (player && !player.isAI) {
-            player.isDisconnected = true;
-            console.log('Player marked as disconnected:', player.name);
-            
-            // 연결 끊긴 플레이어가 현재 턴이면 다음 플레이어로 넘김
-            if (room.currentPlayer === room.players.findIndex(p => p.id === socket.id)) {
-              room.gameLog.push(`${player.name}님의 연결이 끊어져 턴을 건너뜁니다.`);
-              
-              // 다음 연결된 플레이어 찾기
-              let nextPlayer = (room.currentPlayer + 1) % room.players.length;
-              let attempts = 0;
-              while (attempts < room.players.length && 
-                     (room.players[nextPlayer].isDisconnected && !room.players[nextPlayer].isAI)) {
-                nextPlayer = (nextPlayer + 1) % room.players.length;
-                attempts++;
-              }
-              
-              room.currentPlayer = nextPlayer;
-              
-              // 모든 플레이어가 연결 끊김인 경우 게임 일시정지
-              const connectedPlayers = room.players.filter(p => !p.isDisconnected || p.isAI);
-              if (connectedPlayers.length === 0) {
-                room.gameState = 'paused';
-                room.gameLog.push('모든 플레이어의 연결이 끊어져 게임이 일시정지되었습니다.');
-              }
-            }
-            
-            // 호스트가 연결 끊긴 경우 다른 연결된 플레이어에게 호스트 권한 이양
-            if (player.isHost) {
-              const nextHost = room.players.find(p => !p.isDisconnected && !p.isAI);
-              if (nextHost) {
-                nextHost.isHost = true;
-                player.isHost = false;
-              }
-            }
-            
-            socket.to(playerData.roomId).emit('playerDisconnected', {
-              playerId: socket.id,
-              room: sanitizeRoom(room)
-            });
+          // 호스트가 나간 경우 다음 플레이어를 호스트로
+          if (!room.players.find(p => p.isHost)) {
+            room.players[0].isHost = true;
           }
+          
+          socket.to(playerData.roomId).emit('playerLeft', {
+            playerId: socket.id,
+            room: sanitizeRoom(room)
+          });
         }
       }
       
