@@ -158,38 +158,88 @@ const OnlineLexioGame = () => {
   const [myPlayerId, setMyPlayerId] = useState('');
   const [aiTurnProcessing, setAiTurnProcessing] = useState(false); // AI 턴 처리 상태 추가
 
-  // AI 턴 자동 처리 useEffect (수정됨)
+  // AI 턴 자동 처리 useEffect (디버깅 강화)
   useEffect(() => {
-    // 게임이 진행 중이고, 유효한 현재 플레이어가 있는지 확인
-    if (gameMode !== 'playing' || !room || !room.players || room.currentPlayer >= room.players.length) {
+    console.log('=== AI TURN CHECK ===');
+    console.log('gameMode:', gameMode);
+    console.log('room?.gameState:', room?.gameState);
+    console.log('room?.currentPlayer:', room?.currentPlayer);
+    console.log('aiTurnProcessing:', aiTurnProcessing);
+    
+    // 게임이 진행 중인지 확인
+    if (gameMode !== 'playing' || !room || room.gameState !== 'playing') {
+      console.log('Not in playing state');
+      return;
+    }
+
+    // 현재 플레이어 데이터 확인
+    if (!room.players || room.currentPlayer >= room.players.length) {
+      console.log('Invalid player index');
       return;
     }
 
     const currentPlayerData = room.players[room.currentPlayer];
-    
-    // 현재 플레이어가 AI이고, 아직 처리 중이 아닌 경우에만 실행
-    if (currentPlayerData && currentPlayerData.isAI && !aiTurnProcessing) {
-      console.log('AI turn detected, setting up timer');
-      setAiTurnProcessing(true); // AI 처리 시작
+    if (!currentPlayerData) {
+      console.log('No current player data');
+      return;
+    }
+
+    console.log('Current player:', currentPlayerData.name, 'isAI:', currentPlayerData.isAI);
+
+    // AI 턴이고 아직 처리중이 아닌 경우
+    if (currentPlayerData.isAI && !aiTurnProcessing) {
+      console.log('Setting up AI turn timer...');
+      setAiTurnProcessing(true);
       
-      const timer = setTimeout(() => {
-        if (socket && socket.connected) {
-          console.log('Sending aiPlay event for player:', room.currentPlayer);
-          socket.emit('aiPlay', { playerIndex: room.currentPlayer });
+      // 타이머를 변수에 저장하여 정확한 cleanup
+      const aiTimer = setTimeout(() => {
+        console.log('AI timer executed - checking conditions...');
+        
+        // 타이머 실행 시점에 다시 한번 조건 확인
+        if (!socket || !socket.connected) {
+          console.log('Socket not connected at timer execution');
+          setAiTurnProcessing(false);
+          return;
         }
+
+        // 최신 room 상태 다시 확인
+        if (!room || room.gameState !== 'playing') {
+          console.log('Game state changed during timer');
+          setAiTurnProcessing(false);
+          return;
+        }
+
+        const latestCurrentPlayer = room.players[room.currentPlayer];
+        if (!latestCurrentPlayer || !latestCurrentPlayer.isAI) {
+          console.log('Current player changed or is not AI');
+          setAiTurnProcessing(false);
+          return;
+        }
+
+        console.log('Sending aiPlay event...');
+        socket.emit('aiPlay', { 
+          playerIndex: room.currentPlayer,
+          roomId: room.id,
+          timestamp: Date.now()
+        });
+        
       }, 1500);
       
+      // cleanup 함수에서 타이머 정리
       return () => {
-        clearTimeout(timer);
+        console.log('Cleaning up AI timer');
+        clearTimeout(aiTimer);
+        setAiTurnProcessing(false);
       };
     }
     
-    // 현재 플레이어가 AI가 아니면 처리 상태 해제
-    if (currentPlayerData && !currentPlayerData.isAI) {
+    // AI가 아닌 플레이어인 경우 처리 상태 해제
+    if (currentPlayerData && !currentPlayerData.isAI && aiTurnProcessing) {
+      console.log('Resetting AI processing state - not AI turn');
       setAiTurnProcessing(false);
     }
     
-  }, [room?.currentPlayer, gameMode, room?.players, socket, aiTurnProcessing]);
+  }, [room?.currentPlayer, room?.gameState, gameMode, socket?.connected, aiTurnProcessing]);
 
   // 게임 상태 업데이트 시 AI 처리 상태 초기화
   useEffect(() => {

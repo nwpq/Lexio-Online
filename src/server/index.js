@@ -592,27 +592,33 @@ function broadcastGameUpdate(room) {
   });
 }
 
-// AI 플레이어 함수 (수정됨)
+// AI 플레이어 함수 (디버깅 강화)
 const aiPlay = (room, playerIndex) => {
   const roomId = room.id;
   
+  console.log('=== AI PLAY FUNCTION START ===');
+  console.log('Room ID:', roomId);
+  console.log('Player Index:', playerIndex);
+  
   // 중복 실행 방지 체크
   const executionState = aiExecutionState.get(roomId);
+  console.log('Execution state:', executionState);
+  
   if (executionState && executionState.isExecuting) {
-    console.log('AI already executing, skipping duplicate call');
+    console.log('❌ AI already executing, skipping duplicate call');
     return;
   }
   
   // 실행 상태 설정
   aiExecutionState.set(roomId, { isExecuting: true, lastPlayerIndex: playerIndex });
+  console.log('✅ Execution state set');
   
-  console.log('AI play function called for player:', playerIndex);
   console.log('Room state:', room?.gameState);
   console.log('Total players:', room?.players?.length);
   
   try {
     if (!room || room.gameState !== 'playing' || !room.players[playerIndex]) {
-      console.log('Invalid room or game state or player');
+      console.log('❌ Invalid room or game state or player');
       return;
     }
     
@@ -620,7 +626,7 @@ const aiPlay = (room, playerIndex) => {
     console.log('AI player:', aiPlayer?.name, 'isAI:', aiPlayer?.isAI);
     
     if (!aiPlayer.isAI) {
-      console.log('Player is not AI:', aiPlayer);
+      console.log('❌ Player is not AI:', aiPlayer);
       return;
     }
     
@@ -628,7 +634,7 @@ const aiPlay = (room, playerIndex) => {
     console.log('AI available cards:', availableCards?.length);
     
     if (!availableCards || availableCards.length === 0) {
-      console.log('No cards available for AI');
+      console.log('❌ No cards available for AI');
       return;
     }
     
@@ -695,10 +701,11 @@ const aiPlay = (room, playerIndex) => {
       }
     }
   } catch (error) {
-    console.error('AI play error:', error);
+    console.error('❌ AI play error:', error);
   } finally {
     // 실행 상태 해제
     aiExecutionState.delete(roomId);
+    console.log('✅ AI execution state cleared');
   }
 };
 
@@ -1112,43 +1119,68 @@ io.on('connection', (socket) => {
     }
   });
 
-  // AI 플레이 요청 처리 (수정됨)
+  // AI 플레이 요청 처리 (디버깅 강화)
   socket.on('aiPlay', (data) => {
     try {
-      const { playerIndex } = data;
-      console.log('AI play requested for player:', playerIndex);
+      const { playerIndex, roomId, timestamp } = data;
+      console.log(`=== AI PLAY REQUEST [${timestamp}] ===`);
+      console.log('Requested player index:', playerIndex);
+      console.log('Requested room ID:', roomId);
+      console.log('Socket ID:', socket.id);
       
       // 요청한 클라이언트의 방 찾기
       const playerData = players.get(socket.id);
       if (!playerData) {
-        console.log('Player data not found for AI play request');
+        console.log('❌ Player data not found for AI play request, socket ID:', socket.id);
+        console.log('Available players:', Array.from(players.keys()));
         return;
       }
+      console.log('✅ Player data found:', playerData);
       
       const room = rooms.get(playerData.roomId);
       if (!room) {
-        console.log('Room not found for AI play request');
+        console.log('❌ Room not found for AI play request, roomId:', playerData.roomId);
+        console.log('Available rooms:', Array.from(rooms.keys()));
+        return;
+      }
+      console.log('✅ Room found:', room.id);
+
+      // roomId 일치 확인 (추가 안전장치)
+      if (roomId && room.id !== roomId) {
+        console.log('❌ Room ID mismatch:', room.id, 'vs', roomId);
+        return;
+      }
+      
+      // 게임 상태 확인
+      if (room.gameState !== 'playing') {
+        console.log('❌ Game not playing:', room.gameState);
+        return;
+      }
+      
+      // 플레이어 인덱스 확인
+      if (playerIndex !== room.currentPlayer) {
+        console.log('❌ Player index mismatch:', playerIndex, 'vs', room.currentPlayer);
         return;
       }
       
       // AI 플레이어 검증
-      if (!room.players[playerIndex] || !room.players[playerIndex].isAI) {
-        console.log('Invalid AI player index:', playerIndex);
+      if (!room.players[playerIndex]) {
+        console.log('❌ Player not found at index:', playerIndex);
+        console.log('Available players:', room.players.map((p, i) => `${i}: ${p.name} (AI: ${p.isAI})`));
         return;
       }
       
-      // 현재 턴 검증
-      if (room.currentPlayer !== playerIndex) {
-        console.log('Not AI player turn:', room.currentPlayer, 'vs', playerIndex);
+      if (!room.players[playerIndex].isAI) {
+        console.log('❌ Player at index is not AI:', playerIndex, room.players[playerIndex]);
         return;
       }
+      console.log('✅ AI player verified:', room.players[playerIndex].name);
       
-      if (room.gameState === 'playing') {
-        console.log('Processing AI play for room:', room.id);
-        aiPlay(room, playerIndex);
-      }
+      console.log('🚀 Processing AI play for room:', room.id);
+      aiPlay(room, playerIndex);
+      
     } catch (error) {
-      console.error('AI play request error:', error);
+      console.error('❌ AI play request error:', error);
     }
   });
 
