@@ -465,7 +465,6 @@ io.on('connection', (socket) => {
       console.log('Player:', playerData.name);
       console.log('Player index:', playerIndex);
       console.log('Current player:', room.currentPlayer);
-      console.log('Room players:', room.players.map(p => ({name: p.name, id: p.id, isAI: p.isAI})));
       
       if (playerIndex === -1) {
         console.log('Player not found in room players');
@@ -487,30 +486,6 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // 플레이어 카드 확인
-      const player = room.players[playerIndex];
-      console.log('Player cards:', player.cards);
-      console.log('Player card count:', player.cards.length);
-      
-      // 선택한 카드가 플레이어 손에 있는지 확인
-      const invalidCards = [];
-      selectedCards.forEach(selectedCard => {
-        const hasCard = player.cards.some(playerCard => 
-          playerCard.id === selectedCard.id && 
-          playerCard.symbol === selectedCard.symbol && 
-          playerCard.number === selectedCard.number
-        );
-        if (!hasCard) {
-          invalidCards.push(selectedCard);
-        }
-      });
-      
-      if (invalidCards.length > 0) {
-        console.log('Invalid cards detected:', invalidCards);
-        socket.emit('error', { message: '가지고 있지 않은 카드입니다.' });
-        return;
-      }
-      
       const hand = analyzeHand(selectedCards);
       console.log('Analyzed hand:', hand);
       
@@ -519,9 +494,9 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // 이전 플레이와 비교
+      // 이전 플레이와 비교 (조건 검사)
       if (room.lastPlay.hand) {
-        console.log('Comparing with last play:', room.lastPlay);
+        console.log('Checking against last play:', room.lastPlay);
         
         if (selectedCards.length !== room.lastPlay.cards.length) {
           socket.emit('error', { message: `${room.lastPlay.cards.length}장의 카드를 내야 합니다.` });
@@ -539,15 +514,16 @@ io.on('connection', (socket) => {
       
       console.log('All validations passed, executing card play');
       
-      // 카드 제거
-      selectedCards.forEach(selectedCard => {
-        const cardIndex = player.cards.findIndex(card => card.id === selectedCard.id);
-        if (cardIndex !== -1) {
-          player.cards.splice(cardIndex, 1);
-        }
-      });
+      // 플레이어 카드에서 제거 (단순한 방식으로 변경)
+      const player = room.players[playerIndex];
+      console.log('Player cards before removal:', player.cards.length);
       
-      console.log('Cards after removal:', player.cards.length);
+      // 카드 제거
+      player.cards = player.cards.filter(
+        card => !selectedCards.find(selected => selected.id === card.id)
+      );
+      
+      console.log('Player cards after removal:', player.cards.length);
       
       // 게임 상태 업데이트
       room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
@@ -575,28 +551,20 @@ io.on('connection', (socket) => {
       } else {
         room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
         console.log('Next player:', room.currentPlayer);
-        
-        // AI 턴 자동 처리
+      }
+      
+      // 간단한 브로드캐스트로 변경 (원본 방식과 동일)
+      console.log('Broadcasting update to all players');
+      io.to(playerData.roomId).emit('gameUpdated', {
+        room: sanitizeRoom(room)
+      });
+      
+      // AI 턴 체크는 별도로 실행
+      if (room.gameState === 'playing') {
         setTimeout(() => {
           checkAndProcessAITurn(room);
         }, 1500);
       }
-      
-      // 모든 플레이어에게 업데이트 전송
-      console.log('Sending updates to all players');
-      room.players.forEach(roomPlayer => {
-        if (!roomPlayer.isAI) {
-          const playerSocket = io.sockets.sockets.get(roomPlayer.id);
-          if (playerSocket) {
-            console.log('Sending update to:', roomPlayer.name);
-            playerSocket.emit('gameUpdated', {
-              room: sanitizeRoom(room, roomPlayer.id)
-            });
-          } else {
-            console.log('Socket not found for player:', roomPlayer.name);
-          }
-        }
-      });
       
       console.log('=== CARD PLAY COMPLETE ===');
       
@@ -608,57 +576,52 @@ io.on('connection', (socket) => {
 
   // 패스
   socket.on('pass', () => {
-    const playerData = players.get(socket.id);
-    if (!playerData) return;
-    
-    const room = rooms.get(playerData.roomId);
-    if (!room || room.gameState !== 'playing') return;
-    
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    if (playerIndex !== room.currentPlayer) return;
-    
-    if (room.lastPlay.cards.length === 0) {
-      socket.emit('error', { message: '첫 턴에는 패스할 수 없습니다.' });
-      return;
-    }
-    
-    const player = room.players[playerIndex];
-    room.gameLog.push(`${player.name}: 패스`);
-    
-    room.passCount++;
-    
-    if (room.passCount >= room.players.length - 1) {
-      // 마지막으로 카드를 낸 플레이어가 선이 됨
-      const lastCardPlayer = room.lastPlay.player;
-      room.lastPlay = { cards: [], player: null, hand: null };
-      room.passCount = 0;
-      room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
-      room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
+    try {
+      const playerData = players.get(socket.id);
+      if (!playerData) return;
       
-      // AI 턴 자동 처리
-      setTimeout(() => {
-        checkAndProcessAITurn(room);
-      }, 1500);
-    } else {
-      room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+      const room = rooms.get(playerData.roomId);
+      if (!room || room.gameState !== 'playing') return;
       
-      // AI 턴 자동 처리
-      setTimeout(() => {
-        checkAndProcessAITurn(room);
-      }, 1500);
-    }
-    
-    // 각 플레이어에게 개별적으로 데이터 전송
-    room.players.forEach(roomPlayer => {
-      if (!roomPlayer.isAI) {
-        const playerSocket = io.sockets.sockets.get(roomPlayer.id);
-        if (playerSocket) {
-          playerSocket.emit('gameUpdated', {
-            room: sanitizeRoom(room, roomPlayer.id)
-          });
-        }
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
+      if (playerIndex !== room.currentPlayer) return;
+      
+      if (room.lastPlay.cards.length === 0) {
+        socket.emit('error', { message: '첫 턴에는 패스할 수 없습니다.' });
+        return;
       }
-    });
+      
+      const player = room.players[playerIndex];
+      room.gameLog.push(`${player.name}: 패스`);
+      
+      room.passCount++;
+      
+      if (room.passCount >= room.players.length - 1) {
+        // 마지막으로 카드를 낸 플레이어가 선이 됨
+        const lastCardPlayer = room.lastPlay.player;
+        room.lastPlay = { cards: [], player: null, hand: null };
+        room.passCount = 0;
+        room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
+        room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
+      } else {
+        room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+      }
+      
+      // 간단한 브로드캐스트로 변경
+      io.to(playerData.roomId).emit('gameUpdated', {
+        room: sanitizeRoom(room)
+      });
+      
+      // AI 턴 체크
+      if (room.gameState === 'playing') {
+        setTimeout(() => {
+          checkAndProcessAITurn(room);
+        }, 1500);
+      }
+      
+    } catch (error) {
+      console.error('Pass error:', error);
+    }
   });
 
   // AI 플레이
