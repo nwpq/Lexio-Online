@@ -299,6 +299,12 @@ const OnlineLexioGame = () => {
       setAiTurnProcessing(false); // 상태 초기화
     });
 
+    newSocket.on('playerDisconnected', (data) => {
+      setRoom(data.room);
+      setError('플레이어의 연결이 끊어졌습니다.');
+      setAiTurnProcessing(false); // 상태 초기화
+    });
+
     newSocket.on('error', (data) => {
       console.log('Error received:', data.message);
       setError(data.message);
@@ -537,7 +543,10 @@ const OnlineLexioGame = () => {
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
                         {index + 1}
                       </div>
-                      <span className="font-medium">{player.name}</span>
+                      <span className={`font-medium ${player.isDisconnected ? 'text-red-500' : ''}`}>
+                        {player.name}
+                        {player.isDisconnected && ' (연결 끊김)'}
+                      </span>
                       {player.isHost && <Crown className="w-4 h-4 text-yellow-500" />}
                       {player.id === myPlayerId && <span className="text-sm text-blue-600">(나)</span>}
                       {player.isAI && <span className="text-sm text-purple-600">AI</span>}
@@ -717,7 +726,12 @@ const OnlineLexioGame = () => {
                           {player.name.charAt(0)}
                         </div>
                         <div className="text-center">
-                          <div className="text-xs font-medium truncate max-w-16">{player.name}</div>
+                          <div className={`text-xs font-medium truncate max-w-16 ${player.isDisconnected ? 'text-red-500' : ''}`}>
+                            {player.name}
+                          </div>
+                          {player.isDisconnected && (
+                            <div className="text-xs text-red-500">(연결 끊김)</div>
+                          )}
                           <div className="text-xs text-gray-600">{player.cardCount}장</div>
                         </div>
                         <div className="flex gap-1">
