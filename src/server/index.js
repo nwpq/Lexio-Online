@@ -472,7 +472,8 @@ io.on('connection', (socket) => {
     if (room.passCount >= room.players.length - 1) {
       room.lastPlay = { cards: [], player: null, hand: null };
       room.passCount = 0;
-      room.currentPlayer = room.lastPlay.player || room.currentPlayer;
+      // 마지막으로 카드를 낸 플레이어가 선이 됨 (패스한 플레이어가 아님)
+      room.currentPlayer = room.lastPlay.player !== null ? room.lastPlay.player : room.currentPlayer;
       room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
     } else {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;

@@ -112,16 +112,20 @@ const Card = ({ card, selected, onClick, size = 'normal' }) => {
   const Symbol = SYMBOLS[card.symbol]?.icon;
   if (!Symbol) return null;
   
-  const sizeClasses = size === 'small' ? 'w-12 h-16 text-xs' : 'w-16 h-20 text-sm';
+  const sizeClasses = {
+    small: 'w-10 h-14 text-xs',
+    normal: 'w-12 h-16 text-sm',
+    large: 'w-16 h-20 text-base'
+  };
   
   return (
     <div
-      className={`${sizeClasses} border-2 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all
+      className={`${sizeClasses[size]} border-2 rounded-lg flex flex-col items-center justify-center cursor-pointer transition-all
         ${selected ? 'border-blue-500 bg-blue-50 -translate-y-2' : 'border-gray-300 bg-white'}
-        ${SYMBOLS[card.symbol].bg} hover:shadow-md`}
+        ${SYMBOLS[card.symbol].bg} hover:shadow-md active:scale-95`}
       onClick={onClick}
     >
-      <Symbol className={`w-4 h-4 ${SYMBOLS[card.symbol].color}`} />
+      <Symbol className={`w-3 h-3 sm:w-4 sm:h-4 ${SYMBOLS[card.symbol].color}`} />
       <span className="font-bold mt-1">{card.number}</span>
     </div>
   );
@@ -635,14 +639,16 @@ const OnlineLexioGame = () => {
           </>
         )}
 
-        {/* 게임 로그 */}
-        <div className="bg-white rounded-lg p-4 shadow-lg max-h-32 overflow-y-auto mb-6">
-          <h3 className="font-semibold mb-2">게임 로그</h3>
-          {room.gameLog.map((log, index) => (
-            <p key={index} className="text-sm text-gray-600 mb-1">
-              {log}
-            </p>
-          ))}
+        {/* 게임 로그 - 컴팩트 */}
+        <div className="bg-white rounded-lg p-3 shadow-lg max-h-24 overflow-y-auto mb-4">
+          <h3 className="font-semibold mb-2 text-sm">게임 로그</h3>
+          <div className="space-y-1">
+            {room.gameLog.slice(-5).map((log, index) => (
+              <p key={index} className="text-xs text-gray-600">
+                {log}
+              </p>
+            ))}
+          </div>
         </div>
 
         {error && (
