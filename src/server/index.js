@@ -445,118 +445,165 @@ io.on('connection', (socket) => {
 
   // 카드 플레이
   socket.on('playCards', (data) => {
-    const playerData = players.get(socket.id);
-    if (!playerData) {
-      console.log('Player data not found for:', socket.id);
-      return;
-    }
-    
-    const room = rooms.get(playerData.roomId);
-    if (!room || room.gameState !== 'playing') {
-      console.log('Room not found or not playing:', room?.gameState);
-      return;
-    }
-    
-    const playerIndex = room.players.findIndex(p => p.id === socket.id);
-    console.log('Player index:', playerIndex, 'Current player:', room.currentPlayer);
-    
-    if (playerIndex !== room.currentPlayer) {
-      socket.emit('error', { message: '당신의 턴이 아닙니다.' });
-      return;
-    }
-    
-    const { selectedCards } = data;
-    console.log('Selected cards:', selectedCards);
-    
-    if (!selectedCards || selectedCards.length === 0) {
-      socket.emit('error', { message: '카드를 선택해주세요.' });
-      return;
-    }
-    
-    const hand = analyzeHand(selectedCards);
-    console.log('Analyzed hand:', hand);
-    
-    if (!hand) {
-      socket.emit('error', { message: '올바르지 않은 조합입니다.' });
-      return;
-    }
-    
-    // 조건 검사
-    if (room.lastPlay.hand) {
-      console.log('Checking against last play:', room.lastPlay);
-      
-      if (selectedCards.length !== room.lastPlay.cards.length) {
-        socket.emit('error', { message: `${room.lastPlay.cards.length}장의 카드를 내야 합니다.` });
+    try {
+      const playerData = players.get(socket.id);
+      if (!playerData) {
+        console.log('Player data not found for:', socket.id);
+        socket.emit('error', { message: '플레이어 정보를 찾을 수 없습니다.' });
         return;
       }
       
-      const comparison = compareHands(hand, room.lastPlay.hand);
-      console.log('Hand comparison result:', comparison);
-      
-      if (comparison <= 0) {
-        socket.emit('error', { message: '더 높은 조합을 내야 합니다.' });
+      const room = rooms.get(playerData.roomId);
+      if (!room || room.gameState !== 'playing') {
+        console.log('Room not found or not playing:', room?.gameState);
+        socket.emit('error', { message: '게임 방을 찾을 수 없거나 게임이 진행 중이 아닙니다.' });
         return;
       }
-    }
-    
-    // 플레이어가 실제로 해당 카드들을 가지고 있는지 확인
-    const player = room.players[playerIndex];
-    const hasAllCards = selectedCards.every(selectedCard => 
-      player.cards.some(playerCard => playerCard.id === selectedCard.id)
-    );
-    
-    if (!hasAllCards) {
-      socket.emit('error', { message: '가지고 있지 않은 카드입니다.' });
-      return;
-    }
-    
-    console.log('Card play validation passed, executing play');
-    
-    // 카드 제거
-    player.cards = player.cards.filter(
-      card => !selectedCards.find(selected => selected.id === card.id)
-    );
-    
-    room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
-    room.passCount = 0;
-    
-    const handNames = {
-      [HAND_RANKS.SINGLE]: '싱글',
-      [HAND_RANKS.PAIR]: '페어',
-      [HAND_RANKS.TRIPLE]: '트리플',
-      [HAND_RANKS.STRAIGHT]: '스트레이트',
-      [HAND_RANKS.FLUSH]: '플러쉬',
-      [HAND_RANKS.FULL_HOUSE]: '풀하우스',
-      [HAND_RANKS.FOUR_KIND]: '포카드',
-      [HAND_RANKS.STRAIGHT_FLUSH]: '스트레이트플러쉬'
-    };
-    
-    const logEntry = `${player.name}: ${handNames[hand.rank]} (${selectedCards.length}장)`;
-    room.gameLog.push(logEntry);
-    
-    // 게임 종료 체크
-    if (player.cards.length === 0) {
-      endRound(room, playerIndex);
-    } else {
-      room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
       
-      // AI 턴 자동 처리
-      setTimeout(() => {
-        checkAndProcessAITurn(room);
-      }, 1500);
-    }
-    
-    // 각 플레이어에게 개별적으로 데이터 전송
-    room.players.forEach(roomPlayer => {
-      if (!roomPlayer.isAI) {
-        const playerSocket = io.sockets.sockets.get(roomPlayer.id);
-        if (playerSocket) {
-          playerSocket.emit('gameUpdated', {
-            room: sanitizeRoom(room, roomPlayer.id)
-          });
+      const playerIndex = room.players.findIndex(p => p.id === socket.id);
+      console.log('=== CARD PLAY DEBUG ===');
+      console.log('Player:', playerData.name);
+      console.log('Player index:', playerIndex);
+      console.log('Current player:', room.currentPlayer);
+      console.log('Room players:', room.players.map(p => ({name: p.name, id: p.id, isAI: p.isAI})));
+      
+      if (playerIndex === -1) {
+        console.log('Player not found in room players');
+        socket.emit('error', { message: '게임 참가자가 아닙니다.' });
+        return;
+      }
+      
+      if (playerIndex !== room.currentPlayer) {
+        console.log(`Not player's turn. Player ${playerIndex}, Current ${room.currentPlayer}`);
+        socket.emit('error', { message: '당신의 턴이 아닙니다.' });
+        return;
+      }
+      
+      const { selectedCards } = data;
+      console.log('Selected cards:', selectedCards);
+      
+      if (!selectedCards || selectedCards.length === 0) {
+        socket.emit('error', { message: '카드를 선택해주세요.' });
+        return;
+      }
+      
+      // 플레이어 카드 확인
+      const player = room.players[playerIndex];
+      console.log('Player cards:', player.cards);
+      console.log('Player card count:', player.cards.length);
+      
+      // 선택한 카드가 플레이어 손에 있는지 확인
+      const invalidCards = [];
+      selectedCards.forEach(selectedCard => {
+        const hasCard = player.cards.some(playerCard => 
+          playerCard.id === selectedCard.id && 
+          playerCard.symbol === selectedCard.symbol && 
+          playerCard.number === selectedCard.number
+        );
+        if (!hasCard) {
+          invalidCards.push(selectedCard);
+        }
+      });
+      
+      if (invalidCards.length > 0) {
+        console.log('Invalid cards detected:', invalidCards);
+        socket.emit('error', { message: '가지고 있지 않은 카드입니다.' });
+        return;
+      }
+      
+      const hand = analyzeHand(selectedCards);
+      console.log('Analyzed hand:', hand);
+      
+      if (!hand) {
+        socket.emit('error', { message: '올바르지 않은 조합입니다.' });
+        return;
+      }
+      
+      // 이전 플레이와 비교
+      if (room.lastPlay.hand) {
+        console.log('Comparing with last play:', room.lastPlay);
+        
+        if (selectedCards.length !== room.lastPlay.cards.length) {
+          socket.emit('error', { message: `${room.lastPlay.cards.length}장의 카드를 내야 합니다.` });
+          return;
+        }
+        
+        const comparison = compareHands(hand, room.lastPlay.hand);
+        console.log('Hand comparison result:', comparison);
+        
+        if (comparison <= 0) {
+          socket.emit('error', { message: '더 높은 조합을 내야 합니다.' });
+          return;
         }
       }
-    });
+      
+      console.log('All validations passed, executing card play');
+      
+      // 카드 제거
+      selectedCards.forEach(selectedCard => {
+        const cardIndex = player.cards.findIndex(card => card.id === selectedCard.id);
+        if (cardIndex !== -1) {
+          player.cards.splice(cardIndex, 1);
+        }
+      });
+      
+      console.log('Cards after removal:', player.cards.length);
+      
+      // 게임 상태 업데이트
+      room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
+      room.passCount = 0;
+      
+      const handNames = {
+        [HAND_RANKS.SINGLE]: '싱글',
+        [HAND_RANKS.PAIR]: '페어',
+        [HAND_RANKS.TRIPLE]: '트리플',
+        [HAND_RANKS.STRAIGHT]: '스트레이트',
+        [HAND_RANKS.FLUSH]: '플러쉬',
+        [HAND_RANKS.FULL_HOUSE]: '풀하우스',
+        [HAND_RANKS.FOUR_KIND]: '포카드',
+        [HAND_RANKS.STRAIGHT_FLUSH]: '스트레이트플러쉬'
+      };
+      
+      const logEntry = `${player.name}: ${handNames[hand.rank]} (${selectedCards.length}장)`;
+      room.gameLog.push(logEntry);
+      console.log('Game log updated:', logEntry);
+      
+      // 게임 종료 체크
+      if (player.cards.length === 0) {
+        console.log('Player won, ending round');
+        endRound(room, playerIndex);
+      } else {
+        room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+        console.log('Next player:', room.currentPlayer);
+        
+        // AI 턴 자동 처리
+        setTimeout(() => {
+          checkAndProcessAITurn(room);
+        }, 1500);
+      }
+      
+      // 모든 플레이어에게 업데이트 전송
+      console.log('Sending updates to all players');
+      room.players.forEach(roomPlayer => {
+        if (!roomPlayer.isAI) {
+          const playerSocket = io.sockets.sockets.get(roomPlayer.id);
+          if (playerSocket) {
+            console.log('Sending update to:', roomPlayer.name);
+            playerSocket.emit('gameUpdated', {
+              room: sanitizeRoom(room, roomPlayer.id)
+            });
+          } else {
+            console.log('Socket not found for player:', roomPlayer.name);
+          }
+        }
+      });
+      
+      console.log('=== CARD PLAY COMPLETE ===');
+      
+    } catch (error) {
+      console.error('Card play error:', error);
+      socket.emit('error', { message: '카드 플레이 중 오류가 발생했습니다.' });
+    }
   });
 
   // 패스

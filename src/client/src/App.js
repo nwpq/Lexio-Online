@@ -196,9 +196,12 @@ const OnlineLexioGame = () => {
     });
 
     newSocket.on('gameUpdated', (data) => {
-      console.log('Game updated with data:', data);
+      console.log('=== GAME UPDATE RECEIVED ===');
+      console.log('Update data:', data);
       setRoom(data.room);
+      setSelectedCards([]); // 카드 플레이 후 선택 초기화
       setError('');
+      console.log('Game state updated');
     });
 
     newSocket.on('playerLeft', (data) => {
@@ -207,7 +210,9 @@ const OnlineLexioGame = () => {
     });
 
     newSocket.on('error', (data) => {
+      console.log('Error received:', data.message);
       setError(data.message);
+      // 에러 발생 시 선택된 카드 유지 (다시 시도할 수 있도록)
     });
 
     return () => newSocket.close();
@@ -267,8 +272,19 @@ const OnlineLexioGame = () => {
   const playCards = () => {
     if (selectedCards.length === 0) return;
     
+    console.log('=== CLIENT PLAY CARDS ===');
+    console.log('Selected cards:', selectedCards);
+    console.log('My player ID:', myPlayerId);
+    console.log('Current player:', room?.currentPlayer);
+    console.log('Is my turn:', isMyTurn);
+    
+    if (!socket || !socket.connected) {
+      setError('서버 연결이 끊어졌습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+    
     socket.emit('playCards', { selectedCards });
-    setSelectedCards([]);
+    console.log('Sent playCards event to server');
   };
 
   const pass = () => {
