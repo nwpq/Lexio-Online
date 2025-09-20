@@ -506,6 +506,11 @@ io.on('connection', (socket) => {
       endRound(room, playerIndex);
     } else {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+      
+      // AI 턴 자동 처리
+      setTimeout(() => {
+        checkAndProcessAITurn(room);
+      }, 1500);
     }
     
     // 각 플레이어에게 개별적으로 데이터 전송
@@ -549,8 +554,18 @@ io.on('connection', (socket) => {
       room.passCount = 0;
       room.currentPlayer = lastCardPlayer !== null ? lastCardPlayer : 0;
       room.gameLog.push(`${room.players[room.currentPlayer]?.name || ''}님이 선이 되었습니다.`);
+      
+      // AI 턴 자동 처리
+      setTimeout(() => {
+        checkAndProcessAITurn(room);
+      }, 1500);
     } else {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
+      
+      // AI 턴 자동 처리
+      setTimeout(() => {
+        checkAndProcessAITurn(room);
+      }, 1500);
     }
     
     // 각 플레이어에게 개별적으로 데이터 전송
