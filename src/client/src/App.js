@@ -158,7 +158,7 @@ const OnlineLexioGame = () => {
   const [myPlayerId, setMyPlayerId] = useState('');
   const [aiTurnProcessing, setAiTurnProcessing] = useState(false); // AI 턴 처리 상태 추가
 
-  // AI 턴 자동 처리 useEffect (디버깅 강화)
+  // AI 턴 자동 처리 useEffect (무한루프 해결)
   useEffect(() => {
     console.log('=== AI TURN CHECK ===');
     console.log('gameMode:', gameMode);
@@ -202,20 +202,6 @@ const OnlineLexioGame = () => {
           return;
         }
 
-        // 최신 room 상태 다시 확인
-        if (!room || room.gameState !== 'playing') {
-          console.log('Game state changed during timer');
-          setAiTurnProcessing(false);
-          return;
-        }
-
-        const latestCurrentPlayer = room.players[room.currentPlayer];
-        if (!latestCurrentPlayer || !latestCurrentPlayer.isAI) {
-          console.log('Current player changed or is not AI');
-          setAiTurnProcessing(false);
-          return;
-        }
-
         console.log('Sending aiPlay event...');
         socket.emit('aiPlay', { 
           playerIndex: room.currentPlayer,
@@ -229,7 +215,6 @@ const OnlineLexioGame = () => {
       return () => {
         console.log('Cleaning up AI timer');
         clearTimeout(aiTimer);
-        setAiTurnProcessing(false);
       };
     }
     
@@ -239,7 +224,7 @@ const OnlineLexioGame = () => {
       setAiTurnProcessing(false);
     }
     
-  }, [room?.currentPlayer, room?.gameState, gameMode, socket?.connected, aiTurnProcessing]);
+  }, [room?.currentPlayer, room?.gameState, gameMode, socket?.connected]); // aiTurnProcessing 제거
 
   // 게임 상태 업데이트 시 AI 처리 상태 초기화
   useEffect(() => {
@@ -298,7 +283,13 @@ const OnlineLexioGame = () => {
       setRoom(data.room);
       setSelectedCards([]); // 카드 플레이 후 선택 초기화
       setError('');
-      setAiTurnProcessing(false); // 게임 상태 업데이트 시 AI 처리 상태 초기화
+      
+      // AI 턴이 끝났을 수도 있으므로 AI 처리 상태 초기화
+      const currentPlayerData = data.room?.players?.[data.room?.currentPlayer];
+      if (currentPlayerData && !currentPlayerData.isAI) {
+        setAiTurnProcessing(false);
+      }
+      
       console.log('Game state updated');
     });
 
