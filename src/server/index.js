@@ -334,9 +334,16 @@ io.on('connection', (socket) => {
     
     // AI 플레이어 추가 (3명 미만일 때)
     while (room.players.length < 3) {
+      const aiNames = [
+        '렉시오 마스터', '카드 신동', '전략가', '승부사', 
+        '포커페이스', '블러핑 킹', '카드샤크', '게임 구루',
+        '아이언맨', '카드 마법사', '전술가', '게임 엔진'
+      ];
+      const randomName = aiNames[Math.floor(Math.random() * aiNames.length)];
+      
       const aiPlayer = {
         id: `ai-${Date.now()}-${Math.random()}`,
-        name: `AI ${room.players.length}`,
+        name: `${randomName} ${room.players.length}`,
         cards: [],
         isHost: false,
         isAI: true
@@ -428,8 +435,16 @@ io.on('connection', (socket) => {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
     }
     
-    io.to(playerData.roomId).emit('gameUpdated', {
-      room: sanitizeRoom(room)
+    // 각 플레이어에게 개별적으로 데이터 전송
+    room.players.forEach(roomPlayer => {
+      if (!roomPlayer.isAI) {
+        const playerSocket = io.sockets.sockets.get(roomPlayer.id);
+        if (playerSocket) {
+          playerSocket.emit('gameUpdated', {
+            room: sanitizeRoom(room, roomPlayer.id)
+          });
+        }
+      }
     });
   });
 
@@ -463,12 +478,38 @@ io.on('connection', (socket) => {
       room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
     }
     
-    io.to(playerData.roomId).emit('gameUpdated', {
-      room: sanitizeRoom(room)
+    // 각 플레이어에게 개별적으로 데이터 전송
+    room.players.forEach(roomPlayer => {
+      if (!roomPlayer.isAI) {
+        const playerSocket = io.sockets.sockets.get(roomPlayer.id);
+        if (playerSocket) {
+          playerSocket.emit('gameUpdated', {
+            room: sanitizeRoom(room, roomPlayer.id)
+          });
+        }
+      }
     });
   });
 
-  // 연결 해제
+  // AI 플레이
+  socket.on('aiPlay', (data) => {
+    const { playerIndex } = data;
+    console.log('AI play requested for player:', playerIndex);
+    
+    // 방 찾기
+    let targetRoom = null;
+    for (const [roomId, room] of rooms.entries()) {
+      if (room.players[playerIndex] && room.players[playerIndex].isAI) {
+        targetRoom = room;
+        break;
+      }
+    }
+    
+    if (targetRoom) {
+      console.log('Processing AI play for room:', targetRoom.id);
+      aiPlay(targetRoom, playerIndex);
+    }
+  });
   socket.on('disconnect', () => {
     console.log('플레이어 연결 해제:', socket.id);
     const playerData = players.get(socket.id);
