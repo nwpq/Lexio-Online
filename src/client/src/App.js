@@ -272,6 +272,9 @@ const OnlineLexioGame = () => {
   const playCards = () => {
     if (selectedCards.length === 0) return;
     
+    const currentPlayerData = room?.players[room?.currentPlayer];
+    const isMyTurn = currentPlayerData?.id === myPlayerId;
+    
     console.log('=== CLIENT PLAY CARDS ===');
     console.log('Selected cards:', selectedCards);
     console.log('My player ID:', myPlayerId);
