@@ -19,9 +19,11 @@ if (process.env.NODE_ENV === 'production') {
 
 const io = socketIo(server, {
   cors: {
-    origin: process.env.NODE_ENV === 'production' ? false : "http://localhost:3000",
-    methods: ["GET", "POST"]
-  }
+    origin: "*",
+    methods: ["GET", "POST"],
+    credentials: false
+  },
+  transports: ['websocket', 'polling']
 });
 
 // 게임 상태 관리

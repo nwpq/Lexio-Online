@@ -155,9 +155,20 @@ const OnlineLexioGame = () => {
 
   // Socket 연결
   useEffect(() => {
-    const newSocket = io(process.env.NODE_ENV === 'production' ? window.location.origin : 'http://localhost:5000');
+    const newSocket = io(window.location.origin, {
+      transports: ['websocket', 'polling']
+    });
     setSocket(newSocket);
-    setMyPlayerId(newSocket.id);
+    
+    newSocket.on('connect', () => {
+      console.log('Socket connected:', newSocket.id);
+      setMyPlayerId(newSocket.id);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setError('서버 연결에 실패했습니다. 페이지를 새로고침해주세요.');
+    });
 
     // 소켓 이벤트 리스너
     newSocket.on('roomCreated', (data) => {
@@ -201,9 +212,15 @@ const OnlineLexioGame = () => {
       return;
     }
     
+    if (!socket || !socket.connected) {
+      setError('서버에 연결되지 않았습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+    
+    console.log('Creating room with socket:', socket.id);
     socket.emit('createRoom', {
       playerName: playerName.trim(),
-      playerCount: 4 // 기본 4인
+      playerCount: 4
     });
   };
 
@@ -213,6 +230,12 @@ const OnlineLexioGame = () => {
       return;
     }
     
+    if (!socket || !socket.connected) {
+      setError('서버에 연결되지 않았습니다. 페이지를 새로고침해주세요.');
+      return;
+    }
+    
+    console.log('Joining room with socket:', socket.id);
     socket.emit('joinRoom', {
       roomId: roomId.trim().toUpperCase(),
       playerName: playerName.trim()
