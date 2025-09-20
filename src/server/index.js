@@ -555,8 +555,18 @@ io.on('connection', (socket) => {
       
       // 간단한 브로드캐스트로 변경 (원본 방식과 동일)
       console.log('Broadcasting update to all players');
-      io.to(playerData.roomId).emit('gameUpdated', {
-        room: sanitizeRoom(room)
+      
+      // 각 플레이어에게 개별 카드 정보와 함께 전송
+      room.players.forEach(roomPlayer => {
+        if (!roomPlayer.isAI) {
+          const playerSocket = io.sockets.sockets.get(roomPlayer.id);
+          if (playerSocket) {
+            console.log('Sending update to:', roomPlayer.name);
+            playerSocket.emit('gameUpdated', {
+              room: sanitizeRoom(room, roomPlayer.id)
+            });
+          }
+        }
       });
       
       // AI 턴 체크는 별도로 실행
@@ -607,9 +617,16 @@ io.on('connection', (socket) => {
         room.currentPlayer = (room.currentPlayer + 1) % room.players.length;
       }
       
-      // 간단한 브로드캐스트로 변경
-      io.to(playerData.roomId).emit('gameUpdated', {
-        room: sanitizeRoom(room)
+      // 각 플레이어에게 개별 카드 정보와 함께 전송
+      room.players.forEach(roomPlayer => {
+        if (!roomPlayer.isAI) {
+          const playerSocket = io.sockets.sockets.get(roomPlayer.id);
+          if (playerSocket) {
+            playerSocket.emit('gameUpdated', {
+              room: sanitizeRoom(room, roomPlayer.id)
+            });
+          }
+        }
       });
       
       // AI 턴 체크
