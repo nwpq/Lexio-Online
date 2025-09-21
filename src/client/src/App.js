@@ -704,12 +704,12 @@ const OnlineLexioGame = () => {
               </div>
             </div>
 
-            {/* 내 카드 - 큰 영역 */}
+            {/* 내 카드 - 큰 영역 (수정됨 - 카드 로딩 문제 해결) */}
             {myPlayer && !myPlayer.hasLeft && (
               <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
                 <h3 className="font-semibold mb-3 text-center">내 카드</h3>
                 <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 justify-items-center">
-                  {myPlayer && myPlayer.cards && myPlayer.cards.length > 0 ? (
+                  {myPlayer.cards && myPlayer.cards.length > 0 ? (
                     myPlayer.cards.map(card => (
                       <Card
                         key={card.id}
@@ -719,6 +719,8 @@ const OnlineLexioGame = () => {
                         size="normal"
                       />
                     ))
+                  ) : room.gameState === 'playing' ? (
+                    <div className="col-span-full text-center text-gray-500 py-4">카드가 없습니다</div>
                   ) : (
                     <div className="col-span-full text-center text-gray-500 py-4">카드 로딩 중...</div>
                   )}

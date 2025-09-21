@@ -878,7 +878,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // 게임 시작
+  // 게임 시작 (AI 선패 오류 수정)
   socket.on('startGame', () => {
     const playerData = players.get(socket.id);
     if (!playerData) return;
@@ -921,11 +921,22 @@ io.on('connection', (socket) => {
             }
           }
         });
+        
+        // AI 선패 처리 (수정됨)
+        if (room.gameState === 'playing') {
+          const startPlayer = room.players[room.currentPlayer];
+          if (startPlayer && startPlayer.isAI && !startPlayer.hasLeft) {
+            console.log('AI is starting player, triggering AI play');
+            setTimeout(() => {
+              aiPlay(room, room.currentPlayer);
+            }, 2000); // 2초 후 AI 플레이 시작
+          }
+        }
       }, 500);
     }
   });
 
-  // 플레이어 방 나가기 (새로 추가)
+  // 플레이어 방 나가기 (수정됨 - 게임 상태 업데이트 추가)
   socket.on('leaveRoom', () => {
     const playerData = players.get(socket.id);
     if (!playerData) return;
@@ -976,6 +987,22 @@ io.on('connection', (socket) => {
           player.isHost = false;
         }
       }
+      
+      // 게임 상태 업데이트 전송 (추가됨)
+      setTimeout(() => {
+        broadcastGameUpdate(room);
+        
+        // AI 턴 체크 (플레이어 이탈 후 AI 턴이 될 수 있음)
+        if (room.gameState === 'playing') {
+          const currentPlayer = room.players[room.currentPlayer];
+          if (currentPlayer && currentPlayer.isAI && !currentPlayer.hasLeft) {
+            console.log('Player left, checking if AI turn');
+            setTimeout(() => {
+              aiPlay(room, room.currentPlayer);
+            }, 1000);
+          }
+        }
+      }, 100);
       
       socket.to(playerData.roomId).emit('playerLeft', {
         playerId: socket.id,
@@ -1216,6 +1243,22 @@ io.on('connection', (socket) => {
                 player.isHost = false;
               }
             }
+            
+            // 게임 상태 업데이트 전송 (추가됨)
+            setTimeout(() => {
+              broadcastGameUpdate(room);
+              
+              // AI 턴 체크 (연결 끊김 후 AI 턴이 될 수 있음)
+              if (room.gameState === 'playing') {
+                const currentPlayer = room.players[room.currentPlayer];
+                if (currentPlayer && currentPlayer.isAI && !currentPlayer.hasLeft) {
+                  console.log('Player disconnected, checking if AI turn');
+                  setTimeout(() => {
+                    aiPlay(room, room.currentPlayer);
+                  }, 1000);
+                }
+              }
+            }, 100);
             
             socket.to(playerData.roomId).emit('playerLeft', {
               playerId: socket.id,
