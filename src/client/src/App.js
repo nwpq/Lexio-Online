@@ -156,75 +156,37 @@ const OnlineLexioGame = () => {
   const [selectedCards, setSelectedCards] = useState([]);
   const [error, setError] = useState('');
   const [myPlayerId, setMyPlayerId] = useState('');
-  const [aiTurnProcessing, setAiTurnProcessing] = useState(false); // AI 턴 처리 상태 추가
+  const [aiTurnProcessing, setAiTurnProcessing] = useState(false);
 
-  // AI 턴 자동 처리 useEffect (무한루프 해결)
+  // AI 턴 자동 처리 useEffect (연속 AI 턴 지원)
   useEffect(() => {
-    console.log('=== AI TURN CHECK ===');
-    console.log('gameMode:', gameMode);
-    console.log('room?.gameState:', room?.gameState);
-    console.log('room?.currentPlayer:', room?.currentPlayer);
-    console.log('aiTurnProcessing:', aiTurnProcessing);
-    
-    // 게임이 진행 중인지 확인
-    if (gameMode !== 'playing' || !room || room.gameState !== 'playing') {
-      console.log('Not in playing state');
-      return;
-    }
-
-    // 현재 플레이어 데이터 확인
-    if (!room.players || room.currentPlayer >= room.players.length) {
-      console.log('Invalid player index');
+    if (gameMode !== 'playing' || !room || !room.players || room.currentPlayer >= room.players.length) {
       return;
     }
 
     const currentPlayerData = room.players[room.currentPlayer];
-    if (!currentPlayerData) {
-      console.log('No current player data');
-      return;
-    }
-
-    console.log('Current player:', currentPlayerData.name, 'isAI:', currentPlayerData.isAI);
-
-    // AI 턴이고 아직 처리중이 아닌 경우
-    if (currentPlayerData.isAI && !aiTurnProcessing) {
-      console.log('Setting up AI turn timer...');
+    
+    if (currentPlayerData && currentPlayerData.isAI && !currentPlayerData.hasLeft && !aiTurnProcessing) {
+      console.log('AI turn detected, setting up timer');
       setAiTurnProcessing(true);
       
-      // 타이머를 변수에 저장하여 정확한 cleanup
-      const aiTimer = setTimeout(() => {
-        console.log('AI timer executed - checking conditions...');
-        
-        // 타이머 실행 시점에 다시 한번 조건 확인
-        if (!socket || !socket.connected) {
-          console.log('Socket not connected at timer execution');
-          setAiTurnProcessing(false);
-          return;
+      const timer = setTimeout(() => {
+        if (socket && socket.connected) {
+          console.log('Sending aiPlay event for player:', room.currentPlayer);
+          socket.emit('aiPlay', { playerIndex: room.currentPlayer });
         }
-
-        console.log('Sending aiPlay event...');
-        socket.emit('aiPlay', { 
-          playerIndex: room.currentPlayer,
-          roomId: room.id,
-          timestamp: Date.now()
-        });
-        
       }, 1500);
       
-      // cleanup 함수에서 타이머 정리
       return () => {
-        console.log('Cleaning up AI timer');
-        clearTimeout(aiTimer);
+        clearTimeout(timer);
       };
     }
     
-    // AI가 아닌 플레이어인 경우 처리 상태 해제
-    if (currentPlayerData && !currentPlayerData.isAI && aiTurnProcessing) {
-      console.log('Resetting AI processing state - not AI turn');
+    if (currentPlayerData && !currentPlayerData.isAI) {
       setAiTurnProcessing(false);
     }
     
-  }, [room?.currentPlayer, room?.gameState, gameMode, socket?.connected]); // aiTurnProcessing 제거
+  }, [room?.currentPlayer, gameMode, room?.players, socket]);
 
   // 게임 상태 업데이트 시 AI 처리 상태 초기화
   useEffect(() => {
@@ -259,14 +221,14 @@ const OnlineLexioGame = () => {
       setRoomId(data.roomId);
       setGameMode('lobby');
       setError('');
-      setAiTurnProcessing(false); // 상태 초기화
+      setAiTurnProcessing(false);
     });
 
     newSocket.on('playerJoined', (data) => {
       setRoom(data.room);
-      setGameMode('lobby'); // 참가자도 로비로 이동
+      setGameMode('lobby');
       setError('');
-      setAiTurnProcessing(false); // 상태 초기화
+      setAiTurnProcessing(false);
     });
 
     newSocket.on('gameStarted', (data) => {
@@ -274,17 +236,15 @@ const OnlineLexioGame = () => {
       setRoom(data.room);
       setGameMode('playing');
       setError('');
-      setAiTurnProcessing(false); // 상태 초기화
+      setAiTurnProcessing(false);
     });
 
     newSocket.on('gameUpdated', (data) => {
       console.log('=== GAME UPDATE RECEIVED ===');
-      console.log('Update data:', data);
       setRoom(data.room);
-      setSelectedCards([]); // 카드 플레이 후 선택 초기화
+      setSelectedCards([]);
       setError('');
       
-      // AI 턴이 끝났을 수도 있으므로 AI 처리 상태 초기화
       const currentPlayerData = data.room?.players?.[data.room?.currentPlayer];
       if (currentPlayerData && !currentPlayerData.isAI) {
         setAiTurnProcessing(false);
@@ -296,19 +256,28 @@ const OnlineLexioGame = () => {
     newSocket.on('playerLeft', (data) => {
       setRoom(data.room);
       setError('플레이어가 나갔습니다.');
-      setAiTurnProcessing(false); // 상태 초기화
+      setAiTurnProcessing(false);
+    });
+
+    newSocket.on('leftRoom', () => {
+      // 방 나가기 성공
+      setGameMode('menu');
+      setRoom(null);
+      setRoomId('');
+      setSelectedCards([]);
+      setError('');
+      setAiTurnProcessing(false);
     });
 
     newSocket.on('error', (data) => {
       console.log('Error received:', data.message);
       setError(data.message);
-      setAiTurnProcessing(false); // 에러 시 상태 초기화
-      // 에러 발생 시 선택된 카드 유지 (다시 시도할 수 있도록)
+      setAiTurnProcessing(false);
     });
 
     return () => {
       newSocket.close();
-      setAiTurnProcessing(false); // 클린업 시 상태 초기화
+      setAiTurnProcessing(false);
     };
   }, []);
 
@@ -323,7 +292,6 @@ const OnlineLexioGame = () => {
       return;
     }
     
-    console.log('Creating room with socket:', socket.id);
     socket.emit('createRoom', {
       playerName: playerName.trim(),
       playerCount: 4
@@ -341,7 +309,6 @@ const OnlineLexioGame = () => {
       return;
     }
     
-    console.log('Joining room with socket:', socket.id);
     socket.emit('joinRoom', {
       roomId: roomId.trim().toUpperCase(),
       playerName: playerName.trim()
@@ -382,22 +349,12 @@ const OnlineLexioGame = () => {
   const playCards = () => {
     if (selectedCards.length === 0) return;
     
-    const currentPlayerData = room?.players[room?.currentPlayer];
-    const isMyTurn = currentPlayerData?.id === myPlayerId;
-    
-    console.log('=== CLIENT PLAY CARDS ===');
-    console.log('Selected cards:', selectedCards);
-    console.log('My player ID:', myPlayerId);
-    console.log('Current player:', room?.currentPlayer);
-    console.log('Is my turn:', isMyTurn);
-    
     if (!socket || !socket.connected) {
       setError('서버 연결이 끊어졌습니다. 페이지를 새로고침해주세요.');
       return;
     }
     
     socket.emit('playCards', { selectedCards });
-    console.log('Sent playCards event to server');
   };
 
   const pass = () => {
@@ -410,13 +367,19 @@ const OnlineLexioGame = () => {
     setTimeout(() => setError(''), 2000);
   };
 
+  // 방 나가기 함수 (수정됨)
   const leaveRoom = () => {
-    setGameMode('menu');
-    setRoom(null);
-    setRoomId('');
-    setSelectedCards([]);
-    setError('');
-    setAiTurnProcessing(false);
+    if (socket && socket.connected) {
+      socket.emit('leaveRoom');
+    } else {
+      // 소켓이 연결되지 않은 경우 직접 상태 초기화
+      setGameMode('menu');
+      setRoom(null);
+      setRoomId('');
+      setSelectedCards([]);
+      setError('');
+      setAiTurnProcessing(false);
+    }
   };
 
   if (!socket) {
@@ -529,9 +492,9 @@ const OnlineLexioGame = () => {
             </div>
 
             <div className="mb-6">
-              <h3 className="font-semibold mb-3">플레이어 목록 ({room?.players?.length || 0}/5)</h3>
+              <h3 className="font-semibold mb-3">플레이어 목록 ({room?.players?.filter(p => !p.hasLeft)?.length || 0}/5)</h3>
               <div className="space-y-2">
-                {room?.players?.map((player, index) => (
+                {room?.players?.filter(p => !p.hasLeft)?.map((player, index) => (
                   <div key={player.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
@@ -559,15 +522,15 @@ const OnlineLexioGame = () => {
               <div className="mb-6 space-y-3">
                 <button
                   onClick={addAI}
-                  disabled={room?.players?.length >= 5}
+                  disabled={room?.players?.filter(p => !p.hasLeft)?.length >= 5}
                   className="w-full bg-purple-500 text-white py-2 rounded-lg hover:bg-purple-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
                 >
-                  AI 플레이어 추가 ({room?.players?.length || 0}/5)
+                  AI 플레이어 추가 ({room?.players?.filter(p => !p.hasLeft)?.length || 0}/5)
                 </button>
                 
                 <button
                   onClick={startGame}
-                  disabled={room?.players?.length < 3}
+                  disabled={room?.players?.filter(p => !p.hasLeft)?.length < 3}
                   className="w-full bg-green-500 text-white py-3 rounded-lg hover:bg-green-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
                 >
                   <Play className="w-5 h-5" />
@@ -627,10 +590,10 @@ const OnlineLexioGame = () => {
               
               <div className="mb-6">
                 <h3 className="font-semibold mb-2">현재 점수</h3>
-                {room.players.map((player, index) => (
+                {room.players.filter(p => !p.hasLeft).map((player, index) => (
                   <div key={player.id} className="flex justify-between items-center mb-1">
                     <span>{player.name}</span>
-                    <span className="font-bold">{room.scores[index]}점</span>
+                    <span className="font-bold">{room.scores[room.players.findIndex(p => p.id === player.id)]}점</span>
                   </div>
                 ))}
               </div>
@@ -661,12 +624,15 @@ const OnlineLexioGame = () => {
                   점수
                 </h3>
                 <div className="flex gap-4">
-                  {room.players.map((player, index) => (
-                    <div key={player.id} className="text-center">
-                      <div className="text-sm text-gray-600">{player.name}</div>
-                      <div className="font-bold text-lg">{room.scores[index]}</div>
-                    </div>
-                  ))}
+                  {room.players.filter(p => !p.hasLeft).map((player, index) => {
+                    const originalIndex = room.players.findIndex(p => p.id === player.id);
+                    return (
+                      <div key={player.id} className="text-center">
+                        <div className="text-sm text-gray-600">{player.name}</div>
+                        <div className="font-bold text-lg">{room.scores[originalIndex]}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -675,8 +641,11 @@ const OnlineLexioGame = () => {
             <div className="bg-white rounded-lg p-4 shadow-lg mb-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="text-lg font-semibold">
-                  현재 턴: <span className="text-blue-600">{currentPlayerData?.name}</span>
-                  {isMyTurn && <span className="text-green-600 ml-2">(나의 턴)</span>}
+                  현재 턴: <span className={`${currentPlayerData?.hasLeft ? 'text-red-500' : 'text-blue-600'}`}>
+                    {currentPlayerData?.name}
+                    {currentPlayerData?.hasLeft && ' (나감)'}
+                  </span>
+                  {isMyTurn && !myPlayer?.hasLeft && <span className="text-green-600 ml-2">(나의 턴)</span>}
                   {currentPlayerData?.isAI && <span className="text-purple-600 ml-2">(AI)</span>}
                 </div>
                 <div className="text-sm text-gray-600">
@@ -717,7 +686,12 @@ const OnlineLexioGame = () => {
                           {player.name.charAt(0)}
                         </div>
                         <div className="text-center">
-                          <div className="text-xs font-medium truncate max-w-16">{player.name}</div>
+                          <div className={`text-xs font-medium truncate max-w-16 ${player.hasLeft ? 'text-red-500' : ''}`}>
+                            {player.name}
+                          </div>
+                          {player.hasLeft && (
+                            <div className="text-xs text-red-500">(나감)</div>
+                          )}
                           <div className="text-xs text-gray-600">{player.cardCount}장</div>
                         </div>
                         <div className="flex gap-1">
@@ -731,7 +705,7 @@ const OnlineLexioGame = () => {
             </div>
 
             {/* 내 카드 - 큰 영역 */}
-            {myPlayer && (
+            {myPlayer && !myPlayer.hasLeft && (
               <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
                 <h3 className="font-semibold mb-3 text-center">내 카드</h3>
                 <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-10 gap-2 justify-items-center">
@@ -790,10 +764,22 @@ const OnlineLexioGame = () => {
                 
                 {!isMyTurn && (
                   <div className="mt-4 text-center text-gray-600 py-3 bg-gray-50 rounded-lg">
-                    {currentPlayerData?.name}님의 턴입니다
-                    {currentPlayerData?.isAI && " (AI 플레이 중...)"}
+                    {currentPlayerData?.hasLeft ? 
+                      `${currentPlayerData?.name}님이 나갔습니다. 다음 플레이어로 넘어갑니다...` :
+                      `${currentPlayerData?.name}님의 턴입니다${currentPlayerData?.isAI ? ' (AI 플레이 중...)' : ''}`
+                    }
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* 내가 나간 경우 표시 */}
+            {myPlayer && myPlayer.hasLeft && (
+              <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
+                <div className="text-center text-red-600 py-8">
+                  <h3 className="text-xl font-bold mb-2">게임에서 나갔습니다</h3>
+                  <p>다른 플레이어들의 게임을 관전하실 수 있습니다.</p>
+                </div>
               </div>
             )}
           </>
