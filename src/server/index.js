@@ -211,10 +211,29 @@ function createGame(roomId, playerCount) {
   };
 }
 
-// 게임 시작
+// 게임 시작 (수정됨 - 나간 플레이어 완전 제거)
 function startGame(roomId) {
   const room = rooms.get(roomId);
   if (!room || room.players.length < 3) return false;
+  
+  // 새로운 라운드 시작 시 나간 플레이어 완전 제거
+  if (room.round > 1) {
+    const activePlayers = room.players.filter(p => !p.hasLeft);
+    
+    // 점수 재정렬
+    const newScores = {};
+    activePlayers.forEach((player, index) => {
+      const oldIndex = room.players.findIndex(p => p.id === player.id);
+      if (oldIndex !== -1 && room.scores[oldIndex] !== undefined) {
+        newScores[index] = room.scores[oldIndex];
+      } else {
+        newScores[index] = 100; // 기본 점수
+      }
+    });
+    
+    room.players = activePlayers;
+    room.scores = newScores;
+  }
   
   const deck = createDeck(room.players.length);
   const shuffledDeck = [...deck].sort(() => Math.random() - 0.5);
@@ -225,6 +244,7 @@ function startGame(roomId) {
   room.players.forEach((player, index) => {
     player.cards = shuffledDeck.slice(index * cardsPerPlayer, (index + 1) * cardsPerPlayer)
       .sort(compareCards);
+    player.hasLeft = false; // 라운드 시작 시 모든 플레이어 상태 초기화
   });
   
   // 구름3 가진 플레이어 찾기
@@ -802,7 +822,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // AI 플레이어 추가
+  // AI 플레이어 추가 (다양한 이름으로 수정)
   socket.on('addAI', () => {
     const playerData = players.get(socket.id);
     if (!playerData) return;
@@ -826,10 +846,17 @@ io.on('connection', (socket) => {
       return;
     }
     
+    // 다양한 AI 이름
     const aiNames = [
-      '렉시오 마스터', '카드 신동', '전략가', '승부사', 
-      '포커페이스', '블러프 킹', '카드샤크', '게임 구루',
-      '아이언맨', '카드 마법사', '전술가', '게임 엔진'
+      '카드마스터 알파', '렉시오 레전드', '전략의 달인', '승부사 베타', 
+      '포커페이스 감마', '블러프 킹', '카드샤크 델타', '게임 구루',
+      '스마트 플레이어', '카드 위저드', '전술가 엡실론', '게임 엔진',
+      '천재 플레이어', '카드 마에스트로', '전략왕 제타', '승부의 신',
+      '카드 아티스트', '게임 마스터', '전략가 에타', '렉시오 프로',
+      '카드 닌자', '게임 지니어스', '전술왕 세타', '카드 엠페러',
+      '스마트 에이스', '게임 레전드', '전략 마스터', '카드 체스터',
+      '게임 사무라이', '렉시오 황제', '전술의 신', '카드 현자',
+      '스마트 킹', '게임 마법사', '전략 천재', '카드 챔피언'
     ];
     const randomName = aiNames[Math.floor(Math.random() * aiNames.length)];
     
@@ -1115,6 +1142,17 @@ io.on('connection', (socket) => {
         }
       });
       
+      // AI 턴 체크 (플레이어 카드 플레이 후 AI 턴이 될 수 있음)
+      setTimeout(() => {
+        if (room.gameState === 'playing') {
+          const nextPlayer = room.players[room.currentPlayer];
+          if (nextPlayer && nextPlayer.isAI && !nextPlayer.hasLeft) {
+            console.log('Next player is AI after card play, triggering AI play');
+            aiPlay(room, room.currentPlayer);
+          }
+        }
+      }, 500);
+      
     } catch (error) {
       console.error('Card play error:', error);
       socket.emit('error', { message: '카드 플레이 중 오류가 발생했습니다.' });
@@ -1166,6 +1204,17 @@ io.on('connection', (socket) => {
           }
         }
       });
+      
+      // AI 턴 체크 (패스 후 AI 턴이 될 수 있음)
+      setTimeout(() => {
+        if (room.gameState === 'playing') {
+          const nextPlayer = room.players[room.currentPlayer];
+          if (nextPlayer && nextPlayer.isAI && !nextPlayer.hasLeft) {
+            console.log('Next player is AI after pass, triggering AI play');
+            aiPlay(room, room.currentPlayer);
+          }
+        }
+      }, 500);
       
     } catch (error) {
       console.error('Pass error:', error);

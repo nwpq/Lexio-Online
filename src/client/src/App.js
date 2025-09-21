@@ -23,6 +23,59 @@ const HAND_RANKS = {
   STRAIGHT_FLUSH: 8
 };
 
+// 100종 프로필 이미지 생성 함수
+const generateProfileImages = () => {
+  const colors = [
+    '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
+    '#BB8FCE', '#85C1E9', '#F8C471', '#82E0AA', '#F1948A', '#85C1E9', '#F4D03F', '#AED6F1',
+    '#A9DFBF', '#F9E79F', '#D7BDE2', '#A3E4D7', '#FCF3CF', '#FADBD8', '#D5DBDB', '#EBF5FB',
+    '#E8F8F5', '#FEF9E7', '#FDEDEC', '#F4F6F6', '#EAF2F8', '#E9F7EF', '#FEF5E7', '#FDEAEA'
+  ];
+  
+  const patterns = [
+    '🐱', '🐶', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐸', '🐵',
+    '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛',
+    '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑',
+    '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍',
+    '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑',
+    '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐈', '🦝', '🦨', '🦡', '🦦', '🦫', '🐿', '🦔', '👑',
+    '💎', '🌟', '⭐', '🔥', '💫', '✨', '🌙', '☀️', '🌈', '🍀', '🌸', '🌺', '🌻', '🌷', '🌹'
+  ];
+  
+  const images = [];
+  for (let i = 0; i < 100; i++) {
+    images.push({
+      id: i,
+      background: colors[i % colors.length],
+      pattern: patterns[i % patterns.length],
+      emoji: patterns[Math.floor(i / patterns.length) % patterns.length]
+    });
+  }
+  return images;
+};
+
+const PROFILE_IMAGES = generateProfileImages();
+
+// 프로필 이미지 컴포넌트
+const ProfileImage = ({ imageId, size = 'normal', className = '' }) => {
+  const image = PROFILE_IMAGES[imageId % 100];
+  
+  const sizeClasses = {
+    small: 'w-6 h-6 text-xs',
+    normal: 'w-8 h-8 text-sm',
+    large: 'w-12 h-12 text-lg'
+  };
+  
+  return (
+    <div 
+      className={`${sizeClasses[size]} rounded-full flex items-center justify-center font-bold text-white shadow-sm ${className}`}
+      style={{ backgroundColor: image.background }}
+    >
+      <span>{image.pattern}</span>
+    </div>
+  );
+};
+
 const compareCards = (card1, card2) => {
   const num1Index = NUMBER_ORDER.indexOf(card1.number);
   const num2Index = NUMBER_ORDER.indexOf(card2.number);
@@ -497,9 +550,7 @@ const OnlineLexioGame = () => {
                 {room?.players?.filter(p => !p.hasLeft)?.map((player, index) => (
                   <div key={player.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">
-                        {index + 1}
-                      </div>
+                      <ProfileImage imageId={player.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)} size="normal" />
                       <span className="font-medium">{player.name}</span>
                       {player.isHost && <Crown className="w-4 h-4 text-yellow-500" />}
                       {player.id === myPlayerId && <span className="text-sm text-blue-600">(나)</span>}
@@ -637,7 +688,55 @@ const OnlineLexioGame = () => {
               </div>
             </div>
 
-            {/* 게임 상태 */}
+            {/* 플레이어 목록 - 자신 포함하여 모든 플레이어 표시 */}
+            <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
+              <h3 className="font-semibold mb-3 text-center">플레이어 목록</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                {room.players.map((player) => {
+                  const playerIndex = room.players.findIndex(p => p.id === player.id);
+                  const isCurrentTurn = playerIndex === room.currentPlayer;
+                  return (
+                    <div 
+                      key={player.id}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border transition-all ${
+                        isCurrentTurn && !player.hasLeft
+                          ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' 
+                          : player.hasLeft 
+                            ? 'border-red-300 bg-red-50'
+                            : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <ProfileImage 
+                        imageId={player.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)} 
+                        size="normal" 
+                        className={isCurrentTurn && !player.hasLeft ? 'ring-2 ring-blue-400' : ''}
+                      />
+                      <div className="text-center">
+                        <div className={`text-sm font-medium truncate max-w-20 ${
+                          player.hasLeft ? 'text-red-500' : player.id === myPlayerId ? 'text-blue-600' : ''
+                        }`}>
+                          {player.name}
+                          {player.id === myPlayerId && ' (나)'}
+                        </div>
+                        {player.hasLeft && (
+                          <div className="text-xs text-red-500 font-medium">나감</div>
+                        )}
+                        <div className="text-xs text-gray-600">{player.cardCount}장</div>
+                      </div>
+                      <div className="flex gap-1 items-center">
+                        {player.isHost && <Crown className="w-3 h-3 text-yellow-500" />}
+                        {player.isAI && <span className="text-xs text-purple-600 bg-purple-100 px-1 rounded">AI</span>}
+                        {isCurrentTurn && !player.hasLeft && (
+                          <span className="text-xs text-blue-600 bg-blue-100 px-1 rounded">턴</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 마지막 플레이 */}
             <div className="bg-white rounded-lg p-4 shadow-lg mb-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="text-lg font-semibold">
@@ -663,45 +762,6 @@ const OnlineLexioGame = () => {
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* 다른 플레이어들 - 상단에 작게 표시 */}
-            <div className="bg-white rounded-lg p-3 shadow-lg mb-4">
-              <h3 className="font-semibold mb-2 text-sm text-center">다른 플레이어</h3>
-              <div className="flex justify-center gap-3 flex-wrap">
-                {room.players
-                  .filter(player => player.id !== myPlayerId)
-                  .map((player) => {
-                    const playerIndex = room.players.findIndex(p => p.id === player.id);
-                    return (
-                      <div 
-                        key={player.id}
-                        className={`flex flex-col items-center gap-1 px-2 py-2 rounded-lg border ${
-                          playerIndex === room.currentPlayer 
-                            ? 'border-blue-500 bg-blue-50' 
-                            : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
-                        <div className="w-6 h-6 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                          {player.name.charAt(0)}
-                        </div>
-                        <div className="text-center">
-                          <div className={`text-xs font-medium truncate max-w-16 ${player.hasLeft ? 'text-red-500' : ''}`}>
-                            {player.name}
-                          </div>
-                          {player.hasLeft && (
-                            <div className="text-xs text-red-500">(나감)</div>
-                          )}
-                          <div className="text-xs text-gray-600">{player.cardCount}장</div>
-                        </div>
-                        <div className="flex gap-1">
-                          {player.isHost && <Crown className="w-3 h-3 text-yellow-500" />}
-                          {player.isAI && <span className="text-xs text-purple-600">AI</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
             </div>
 
             {/* 내 카드 - 큰 영역 (수정됨 - 카드 로딩 문제 해결) */}
