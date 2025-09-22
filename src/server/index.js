@@ -207,7 +207,8 @@ function createGame(roomId, playerCount) {
     scores: {},
     passCount: 0,
     winner: null,
-    round: 1
+    round: 1,
+    playerPlays: [] // 각 플레이어가 그 판에서 낸 카드들 기록
   };
 }
 
@@ -265,6 +266,9 @@ function startGame(roomId) {
   room.passCount = 0;
   room.gameLog = [`${room.players[startPlayer].name}님이 구름3을 가져서 선플레이어입니다.`];
   room.winner = null;
+  
+  // 플레이어 플레이 기록 초기화
+  room.playerPlays = room.players.map(() => []);
   
   // 점수 초기화 (첫 라운드만)
   if (room.round === 1) {
@@ -703,6 +707,16 @@ function executeAiPlay(room, playerIndex, selectedCards, hand, hint = '') {
     room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
     room.passCount = 0;
     
+    // 플레이어 플레이 기록에 추가
+    if (!room.playerPlays[playerIndex]) {
+      room.playerPlays[playerIndex] = [];
+    }
+    room.playerPlays[playerIndex].push({
+      cards: selectedCards,
+      hand: hand,
+      timestamp: Date.now()
+    });
+    
     const handNames = {
       [HAND_RANKS.SINGLE]: '싱글',
       [HAND_RANKS.PAIR]: '페어',
@@ -1110,6 +1124,16 @@ io.on('connection', (socket) => {
       
       room.lastPlay = { cards: selectedCards, player: playerIndex, hand };
       room.passCount = 0;
+      
+      // 플레이어 플레이 기록에 추가
+      if (!room.playerPlays[playerIndex]) {
+        room.playerPlays[playerIndex] = [];
+      }
+      room.playerPlays[playerIndex].push({
+        cards: selectedCards,
+        hand: hand,
+        timestamp: Date.now()
+      });
       
       const handNames = {
         [HAND_RANKS.SINGLE]: '싱글',

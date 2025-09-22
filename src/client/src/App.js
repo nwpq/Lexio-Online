@@ -688,6 +688,58 @@ const OnlineLexioGame = () => {
               </div>
             </div>
 
+            {/* 플레이어 플레이 기록 */}
+            <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
+              <h3 className="font-semibold mb-3 text-center">이번 판 플레이 기록</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                {room.players.map((player, playerIndex) => {
+                  const playerPlays = room.playerPlays?.[playerIndex] || [];
+                  return (
+                    <div key={player.id} className="border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <ProfileImage 
+                          imageId={player.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)} 
+                          size="small"
+                        />
+                        <span className={`text-sm font-medium ${
+                          player.hasLeft ? 'text-red-500' : player.id === myPlayerId ? 'text-blue-600' : ''
+                        }`}>
+                          {player.name}
+                          {player.id === myPlayerId && ' (나)'}
+                        </span>
+                      </div>
+                      
+                      {playerPlays.length > 0 ? (
+                        <div className="space-y-2 max-h-32 overflow-y-auto">
+                          {playerPlays.slice(-3).map((play, playIndex) => (
+                            <div key={playIndex} className="bg-gray-50 rounded p-2">
+                              <div className="flex gap-1 mb-1 justify-center">
+                                {play.cards.map((card, cardIndex) => (
+                                  <Card key={`${card.id}-${cardIndex}`} card={card} size="small" />
+                                ))}
+                              </div>
+                              <div className="text-xs text-center text-gray-600">
+                                {getHandName(play.hand)}
+                              </div>
+                            </div>
+                          ))}
+                          {playerPlays.length > 3 && (
+                            <div className="text-xs text-center text-gray-500">
+                              ...그외 {playerPlays.length - 3}번 더
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-center text-gray-400 py-4">
+                          아직 플레이 없음
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* 플레이어 목록 - 자신 포함하여 모든 플레이어 표시 */}
             <div className="bg-white rounded-lg p-4 shadow-lg mb-4">
               <h3 className="font-semibold mb-3 text-center">플레이어 목록</h3>
