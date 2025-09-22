@@ -86,11 +86,12 @@ function compareCards(card1, card2) {
   return SYMBOL_ORDER.indexOf(card1.symbol) - SYMBOL_ORDER.indexOf(card2.symbol);
 }
 
-// 스트레이트 체크
+// 스트레이트 체크 (수정됨 - 렉시오 규칙 적용)
 function checkStraight(sortedCards) {
   const numbers = sortedCards.map(card => NUMBER_ORDER.indexOf(card.number));
   numbers.sort((a, b) => a - b);
   
+  // 연속성 체크
   for (let i = 0; i < numbers.length - 1; i++) {
     if (numbers[i + 1] - numbers[i] !== 1) {
       return false;
@@ -98,6 +99,64 @@ function checkStraight(sortedCards) {
   }
   
   return true;
+}
+
+// 스트레이트의 최고 카드 찾기 (렉시오 공식 규칙 적용)
+function getStraightHighCard(cards) {
+  const numbers = cards.map(card => card.number).sort((a, b) => NUMBER_ORDER.indexOf(a) - NUMBER_ORDER.indexOf(b));
+  
+  const hasOne = cards.some(card => card.number === 1);
+  const hasTwo = cards.some(card => card.number === 2);
+  
+  // 1과 2가 모두 포함된 경우 (1-2-3-4-5): 가장 강함
+  if (hasOne && hasTwo) {
+    return cards.find(card => card.number === 2); // 2를 최고 카드로
+  }
+  
+  // 2만 포함된 경우 (2-3-4-5-6 등): 두 번째로 강함
+  if (hasTwo && !hasOne) {
+    return cards.find(card => card.number === 2); // 2를 최고 카드로
+  }
+  
+  // 끝에 1이 오는 경우 (12-13-14-15-1 등): 세 번째로 강함
+  if (hasOne && !hasTwo) {
+    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
+    if (maxNormalNumber >= 12) { // 5인용 기준
+      return cards.find(card => card.number === 1); // 1을 최고 카드로 (하지만 특별 취급)
+    }
+  }
+  
+  // 일반적인 스트레이트: 가장 높은 숫자 카드
+  const sortedCards = [...cards].sort(compareCards);
+  return sortedCards[4];
+}
+
+// 스트레이트 비교를 위한 특별 함수
+function getStraightRank(cards) {
+  const hasOne = cards.some(card => card.number === 1);
+  const hasTwo = cards.some(card => card.number === 2);
+  
+  // 1과 2가 모두 포함: 랭크 1000 (가장 높음)
+  if (hasOne && hasTwo) {
+    return 1000;
+  }
+  
+  // 2만 포함: 랭크 900
+  if (hasTwo && !hasOne) {
+    return 900;
+  }
+  
+  // 끝에 1이 오는 스트레이트: 랭크 800
+  if (hasOne && !hasTwo) {
+    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
+    if (maxNormalNumber >= 12) { // 5인용 기준
+      return 800;
+    }
+  }
+  
+  // 일반 스트레이트: 가장 높은 숫자의 NUMBER_ORDER 인덱스
+  const sortedCards = [...cards].sort(compareCards);
+  return NUMBER_ORDER.indexOf(sortedCards[4].number);
 }
 
 // 패 분석
@@ -129,7 +188,7 @@ function analyzeHand(cards) {
     const isStraight = checkStraight(sorted);
     
     if (isFlush && isStraight) {
-      return { rank: HAND_RANKS.STRAIGHT_FLUSH, highCard: sorted[4] };
+      return { rank: HAND_RANKS.STRAIGHT_FLUSH, highCard: getStraightHighCard(cards), cards: cards };
     }
     
     const numberCounts = {};
@@ -153,7 +212,7 @@ function analyzeHand(cards) {
     }
     
     if (isStraight) {
-      return { rank: HAND_RANKS.STRAIGHT, highCard: sorted[4] };
+      return { rank: HAND_RANKS.STRAIGHT, highCard: getStraightHighCard(cards), cards: cards };
     }
   }
   
@@ -171,8 +230,17 @@ function compareHands(hand1, hand2) {
   switch (hand1.rank) {
     case HAND_RANKS.SINGLE:
     case HAND_RANKS.FLUSH:
+      return compareCards(hand1.highCard, hand2.highCard);
+      
     case HAND_RANKS.STRAIGHT:
     case HAND_RANKS.STRAIGHT_FLUSH:
+      // 스트레이트는 특별한 랭킹 시스템 사용
+      const rank1 = getStraightRank(hand1.cards || [hand1.highCard]);
+      const rank2 = getStraightRank(hand2.cards || [hand2.highCard]);
+      if (rank1 !== rank2) {
+        return rank1 - rank2;
+      }
+      // 같은 랭크면 문양으로 비교
       return compareCards(hand1.highCard, hand2.highCard);
       
     case HAND_RANKS.PAIR:
