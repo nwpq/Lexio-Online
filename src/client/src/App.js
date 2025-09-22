@@ -87,76 +87,70 @@ const compareCards = (card1, card2) => {
   return SYMBOL_ORDER.indexOf(card1.symbol) - SYMBOL_ORDER.indexOf(card2.symbol);
 };
 
-const checkStraight = (sortedCards) => {
-  const numbers = sortedCards.map(card => NUMBER_ORDER.indexOf(card.number));
-  numbers.sort((a, b) => a - b);
+// 스트레이트 체크 (서버와 동일한 로직)
+const checkStraight = (cards, maxNumber = 15) => {
+  const numbers = cards.map(card => card.number);
   
-  for (let i = 0; i < numbers.length - 1; i++) {
-    if (numbers[i + 1] - numbers[i] !== 1) {
-      return false;
+  // 가능한 스트레이트 패턴들 정의
+  const possibleStraights = [];
+  
+  // 1. 특별한 스트레이트들 (우선 정의)
+  possibleStraights.push([1, 2, 3, 4, 5]); // 1+2 조합 (최강)
+  possibleStraights.push([2, 3, 4, 5, 6]); // 2만 포함 (두번째)
+  
+  // 2. 일반적인 연속 스트레이트 (3부터 시작)
+  for (let start = 3; start <= maxNumber - 4; start++) {
+    possibleStraights.push([start, start+1, start+2, start+3, start+4]);
+  }
+  
+  // 3. 1이 끝에 오는 스트레이트들
+  if (maxNumber >= 9) { // 3인용
+    possibleStraights.push([6, 7, 8, 9, 1]);
+  }
+  if (maxNumber >= 13) { // 4인용  
+    possibleStraights.push([10, 11, 12, 13, 1]);
+  }
+  if (maxNumber >= 15) { // 5인용
+    possibleStraights.push([12, 13, 14, 15, 1]);
+  }
+  
+  // 입력된 카드 숫자들이 가능한 스트레이트 중 하나와 일치하는지 확인
+  for (const straight of possibleStraights) {
+    if (straight.length === 5 && 
+        straight.every(num => numbers.includes(num)) &&
+        numbers.length === 5) {
+      return true;
     }
   }
   
-  return true;
+  return false;
 };
 
-// 스트레이트의 최고 카드 찾기 (렉시오 공식 규칙 적용)
+// 스트레이트의 최고 카드 찾기 (서버와 동일한 로직)
 const getStraightHighCard = (cards) => {
   const hasOne = cards.some(card => card.number === 1);
   const hasTwo = cards.some(card => card.number === 2);
   
-  // 1과 2가 모두 포함된 경우 (1-2-3-4-5): 가장 강함
   if (hasOne && hasTwo) {
-    return cards.find(card => card.number === 2); // 2를 최고 카드로
+    return cards.find(card => card.number === 2);
   }
   
-  // 2만 포함된 경우 (2-3-4-5-6 등): 두 번째로 강함
   if (hasTwo && !hasOne) {
-    return cards.find(card => card.number === 2); // 2를 최고 카드로
+    return cards.find(card => card.number === 2);
   }
   
-  // 끝에 1이 오는 경우 (12-13-14-15-1 등): 세 번째로 강함
   if (hasOne && !hasTwo) {
-    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
-    if (maxNormalNumber >= 12) { // 5인용 기준
-      return cards.find(card => card.number === 1); // 1을 최고 카드로 (하지만 특별 취급)
+    const maxNormal = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
+    if (maxNormal >= 12) {
+      return cards.find(card => card.number === 1);
     }
   }
   
-  // 일반적인 스트레이트: 가장 높은 숫자 카드
   const sortedCards = [...cards].sort(compareCards);
   return sortedCards[4];
 };
 
-// 스트레이트 비교를 위한 특별 함수
-const getStraightRank = (cards) => {
-  const hasOne = cards.some(card => card.number === 1);
-  const hasTwo = cards.some(card => card.number === 2);
-  
-  // 1과 2가 모두 포함: 랭크 1000 (가장 높음)
-  if (hasOne && hasTwo) {
-    return 1000;
-  }
-  
-  // 2만 포함: 랭크 900
-  if (hasTwo && !hasOne) {
-    return 900;
-  }
-  
-  // 끝에 1이 오는 스트레이트: 랭크 800
-  if (hasOne && !hasTwo) {
-    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
-    if (maxNormalNumber >= 12) { // 5인용 기준
-      return 800;
-    }
-  }
-  
-  // 일반 스트레이트: 가장 높은 숫자의 NUMBER_ORDER 인덱스
-  const sortedCards = [...cards].sort(compareCards);
-  return NUMBER_ORDER.indexOf(sortedCards[4].number);
-};
-
-const analyzeHand = (cards) => {
+const analyzeHand = (cards, playerCount = 5) => {
   if (!cards || cards.length === 0) return null;
   
   if (cards.length === 1) {
@@ -181,7 +175,8 @@ const analyzeHand = (cards) => {
   if (cards.length === 5) {
     const sorted = [...cards].sort(compareCards);
     const isFlush = cards.every(card => card.symbol === cards[0].symbol);
-    const isStraight = checkStraight(sorted);
+    const maxNumber = playerCount === 3 ? 9 : playerCount === 4 ? 13 : 15;
+    const isStraight = checkStraight(cards, maxNumber);
     
     if (isFlush && isStraight) {
       return { rank: HAND_RANKS.STRAIGHT_FLUSH, highCard: getStraightHighCard(cards), cards: cards };
@@ -898,7 +893,7 @@ const OnlineLexioGame = () => {
                     </div>
                     <p className="text-sm text-center font-medium">
                       {(() => {
-                        const hand = analyzeHand(selectedCards);
+                        const hand = analyzeHand(selectedCards, room.players?.length || 5);
                         return hand ? getHandName(hand) : '올바르지 않은 조합';
                       })()}
                     </p>

@@ -86,77 +86,117 @@ function compareCards(card1, card2) {
   return SYMBOL_ORDER.indexOf(card1.symbol) - SYMBOL_ORDER.indexOf(card2.symbol);
 }
 
-// 스트레이트 체크 (수정됨 - 렉시오 규칙 적용)
-function checkStraight(sortedCards) {
-  const numbers = sortedCards.map(card => NUMBER_ORDER.indexOf(card.number));
-  numbers.sort((a, b) => a - b);
+// 스트레이트 체크 (렉시오 규칙에 맞게 완전 재작성)
+function checkStraight(cards, maxNumber = 15) {
+  const numbers = cards.map(card => card.number).sort((a, b) => {
+    const aIndex = NUMBER_ORDER.indexOf(a);
+    const bIndex = NUMBER_ORDER.indexOf(b);
+    return aIndex - bIndex;
+  });
   
-  // 연속성 체크
-  for (let i = 0; i < numbers.length - 1; i++) {
-    if (numbers[i + 1] - numbers[i] !== 1) {
-      return false;
+  // 가능한 스트레이트 패턴들 정의
+  const possibleStraights = [];
+  
+  // 1. 특별한 스트레이트들 (우선 정의)
+  possibleStraights.push([1, 2, 3, 4, 5]); // 1+2 조합 (최강)
+  possibleStraights.push([2, 3, 4, 5, 6]); // 2만 포함 (두번째)
+  
+  // 2. 일반적인 연속 스트레이트 (3부터 시작)
+  for (let start = 3; start <= maxNumber - 4; start++) {
+    possibleStraights.push([start, start+1, start+2, start+3, start+4]);
+  }
+  
+  // 3. 1이 끝에 오는 스트레이트들
+  if (maxNumber >= 9) { // 3인용
+    possibleStraights.push([6, 7, 8, 9, 1]);
+  }
+  if (maxNumber >= 13) { // 4인용  
+    possibleStraights.push([10, 11, 12, 13, 1]);
+  }
+  if (maxNumber >= 15) { // 5인용
+    possibleStraights.push([12, 13, 14, 15, 1]);
+  }
+  
+  // 입력된 카드 숫자들이 가능한 스트레이트 중 하나와 일치하는지 확인
+  for (const straight of possibleStraights) {
+    if (straight.length === 5 && 
+        straight.every(num => numbers.includes(num)) &&
+        numbers.length === 5) {
+      return true;
     }
   }
   
-  return true;
+  return false;
 }
 
-// 스트레이트의 최고 카드 찾기 (렉시오 공식 규칙 적용)
+// 스트레이트 타입 확인
+function getStraightType(cards) {
+  const hasOne = cards.some(card => card.number === 1);
+  const hasTwo = cards.some(card => card.number === 2);
+  
+  if (hasOne && hasTwo) {
+    return 'one_and_two'; // 1-2-3-4-5
+  }
+  
+  if (hasTwo && !hasOne) {
+    return 'two_only'; // 2-3-4-5-6
+  }
+  
+  if (hasOne && !hasTwo) {
+    const maxNormal = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
+    if (maxNormal >= 12) { // 12-13-14-15-1 패턴
+      return 'one_at_end';
+    }
+  }
+  
+  return 'normal'; // 일반 스트레이트
+}
+
+// 스트레이트 비교를 위한 함수
+function compareStraights(cards1, cards2) {
+  const type1 = getStraightType(cards1);
+  const type2 = getStraightType(cards2);
+  
+  // 타입별 우선순위
+  const typeRanks = {
+    'one_and_two': 4,    // 1-2-3-4-5 (최강)
+    'two_only': 3,       // 2-3-4-5-6 (두번째)
+    'one_at_end': 2,     // 12-13-14-15-1 (세번째)
+    'normal': 1          // 일반 스트레이트 (가장 약함)
+  };
+  
+  if (typeRanks[type1] !== typeRanks[type2]) {
+    return typeRanks[type1] - typeRanks[type2];
+  }
+  
+  // 같은 타입이면 최고 카드로 비교
+  if (type1 === 'normal') {
+    const max1 = Math.max(...cards1.map(card => NUMBER_ORDER.indexOf(card.number)));
+    const max2 = Math.max(...cards2.map(card => NUMBER_ORDER.indexOf(card.number)));
+    if (max1 !== max2) return max1 - max2;
+  }
+  
+  // 문양으로 최종 비교
+  const high1 = getStraightHighCard(cards1);
+  const high2 = getStraightHighCard(cards2);
+  return compareCards(high1, high2);
+}
+
+// 스트레이트의 최고 카드 찾기 (단순화)
 function getStraightHighCard(cards) {
-  const numbers = cards.map(card => card.number).sort((a, b) => NUMBER_ORDER.indexOf(a) - NUMBER_ORDER.indexOf(b));
+  const type = getStraightType(cards);
   
-  const hasOne = cards.some(card => card.number === 1);
-  const hasTwo = cards.some(card => card.number === 2);
-  
-  // 1과 2가 모두 포함된 경우 (1-2-3-4-5): 가장 강함
-  if (hasOne && hasTwo) {
-    return cards.find(card => card.number === 2); // 2를 최고 카드로
+  switch (type) {
+    case 'one_and_two':
+      return cards.find(card => card.number === 2);
+    case 'two_only':
+      return cards.find(card => card.number === 2);
+    case 'one_at_end':
+      return cards.find(card => card.number === 1);
+    default:
+      const sortedCards = [...cards].sort(compareCards);
+      return sortedCards[4];
   }
-  
-  // 2만 포함된 경우 (2-3-4-5-6 등): 두 번째로 강함
-  if (hasTwo && !hasOne) {
-    return cards.find(card => card.number === 2); // 2를 최고 카드로
-  }
-  
-  // 끝에 1이 오는 경우 (12-13-14-15-1 등): 세 번째로 강함
-  if (hasOne && !hasTwo) {
-    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
-    if (maxNormalNumber >= 12) { // 5인용 기준
-      return cards.find(card => card.number === 1); // 1을 최고 카드로 (하지만 특별 취급)
-    }
-  }
-  
-  // 일반적인 스트레이트: 가장 높은 숫자 카드
-  const sortedCards = [...cards].sort(compareCards);
-  return sortedCards[4];
-}
-
-// 스트레이트 비교를 위한 특별 함수
-function getStraightRank(cards) {
-  const hasOne = cards.some(card => card.number === 1);
-  const hasTwo = cards.some(card => card.number === 2);
-  
-  // 1과 2가 모두 포함: 랭크 1000 (가장 높음)
-  if (hasOne && hasTwo) {
-    return 1000;
-  }
-  
-  // 2만 포함: 랭크 900
-  if (hasTwo && !hasOne) {
-    return 900;
-  }
-  
-  // 끝에 1이 오는 스트레이트: 랭크 800
-  if (hasOne && !hasTwo) {
-    const maxNormalNumber = Math.max(...cards.filter(card => card.number !== 1).map(card => card.number));
-    if (maxNormalNumber >= 12) { // 5인용 기준
-      return 800;
-    }
-  }
-  
-  // 일반 스트레이트: 가장 높은 숫자의 NUMBER_ORDER 인덱스
-  const sortedCards = [...cards].sort(compareCards);
-  return NUMBER_ORDER.indexOf(sortedCards[4].number);
 }
 
 // 패 분석
@@ -187,6 +227,13 @@ function analyzeHand(cards) {
     const isFlush = cards.every(card => card.symbol === cards[0].symbol);
     const isStraight = checkStraight(sorted);
     
+  if (cards.length === 5) {
+    const sorted = [...cards].sort(compareCards);
+    const isFlush = cards.every(card => card.symbol === cards[0].symbol);
+    const playerCount = 5; // TODO: 실제 플레이어 수에 따라 조정
+    const maxNumber = playerCount === 3 ? 9 : playerCount === 4 ? 13 : 15;
+    const isStraight = checkStraight(cards, maxNumber);
+    
     if (isFlush && isStraight) {
       return { rank: HAND_RANKS.STRAIGHT_FLUSH, highCard: getStraightHighCard(cards), cards: cards };
     }
@@ -215,6 +262,7 @@ function analyzeHand(cards) {
       return { rank: HAND_RANKS.STRAIGHT, highCard: getStraightHighCard(cards), cards: cards };
     }
   }
+  }
   
   return null;
 }
@@ -234,13 +282,11 @@ function compareHands(hand1, hand2) {
       
     case HAND_RANKS.STRAIGHT:
     case HAND_RANKS.STRAIGHT_FLUSH:
-      // 스트레이트는 특별한 랭킹 시스템 사용
-      const rank1 = getStraightRank(hand1.cards || [hand1.highCard]);
-      const rank2 = getStraightRank(hand2.cards || [hand2.highCard]);
-      if (rank1 !== rank2) {
-        return rank1 - rank2;
+      // 스트레이트는 특별한 비교 함수 사용
+      if (hand1.cards && hand2.cards) {
+        return compareStraights(hand1.cards, hand2.cards);
       }
-      // 같은 랭크면 문양으로 비교
+      // cards 정보가 없으면 기본 비교
       return compareCards(hand1.highCard, hand2.highCard);
       
     case HAND_RANKS.PAIR:
@@ -414,7 +460,7 @@ function countStrongHands(cards) {
 }
 
 // 전략적 오프닝 선택
-function chooseStrategicOpening(cards, gameState, strategy) {
+function chooseStrategicOpening(cards, gameState, strategy, playerCount) {
   const sortedCards = [...cards].sort(compareCards);
   
   switch (strategy) {
@@ -422,12 +468,12 @@ function chooseStrategicOpening(cards, gameState, strategy) {
       const fiveCombos = findAllFiveCardCombos(cards);
       if (fiveCombos.length > 0) {
         const combo = fiveCombos[Math.floor(Math.random() * fiveCombos.length)];
-        return { cards: combo, hand: analyzeHand(combo) };
+        return { cards: combo, hand: analyzeHand(combo, playerCount) };
       }
       const triples = findAllTriples(cards);
       if (triples.length > 0) {
         const triple = triples[0];
-        return { cards: triple, hand: analyzeHand(triple) };
+        return { cards: triple, hand: analyzeHand(triple, playerCount) };
       }
       break;
       
@@ -435,7 +481,7 @@ function chooseStrategicOpening(cards, gameState, strategy) {
       const pairs = findAllPairs(cards);
       if (pairs.length > 0) {
         const pair = pairs[Math.floor(Math.random() * pairs.length)];
-        return { cards: pair, hand: analyzeHand(pair) };
+        return { cards: pair, hand: analyzeHand(pair, playerCount) };
       }
       break;
       
@@ -447,7 +493,7 @@ function chooseStrategicOpening(cards, gameState, strategy) {
       ];
       if (allCombos.length > 0) {
         const bestCombo = allCombos.sort((a, b) => b.length - a.length)[0];
-        return { cards: bestCombo, hand: analyzeHand(bestCombo) };
+        return { cards: bestCombo, hand: analyzeHand(bestCombo, playerCount) };
       }
       break;
       
@@ -457,19 +503,19 @@ function chooseStrategicOpening(cards, gameState, strategy) {
         const combos = [...findAllPairs(cards), ...findAllTriples(cards)];
         if (combos.length > 0) {
           const combo = combos[Math.floor(Math.random() * combos.length)];
-          return { cards: combo, hand: analyzeHand(combo) };
+          return { cards: combo, hand: analyzeHand(combo, playerCount) };
         }
       }
-      return { cards: [sortedCards[0]], hand: analyzeHand([sortedCards[0]]) };
+      return { cards: [sortedCards[0]], hand: analyzeHand([sortedCards[0]], playerCount) };
   }
   
-  return { cards: [sortedCards[0]], hand: analyzeHand([sortedCards[0]]) };
+  return { cards: [sortedCards[0]], hand: analyzeHand([sortedCards[0]], playerCount) };
 }
 
 // 전략적 의사결정
 function makeStrategicDecision(room, playerIndex, gameState, strategy) {
   const aiPlayer = room.players[playerIndex];
-  const possiblePlays = findPossibleAiPlays(aiPlayer.cards, room.lastPlay);
+  const possiblePlays = findPossibleAiPlays(aiPlayer.cards, room.lastPlay, room.players.length);
   
   if (possiblePlays.length === 0) {
     return { action: 'pass' };
@@ -581,14 +627,14 @@ function findAllPairs(cards) {
     .map(group => group.slice(0, 2));
 }
 
-function findPossibleAiPlays(cards, lastPlay) {
+function findPossibleAiPlays(cards, lastPlay, playerCount) {
   const targetLength = lastPlay.cards.length;
   const possiblePlays = [];
   
   try {
     if (targetLength === 1) {
       cards.forEach(card => {
-        const hand = analyzeHand([card]);
+        const hand = analyzeHand([card], playerCount);
         if (hand && compareHands(hand, lastPlay.hand) > 0) {
           possiblePlays.push({ cards: [card], hand });
         }
@@ -603,7 +649,7 @@ function findPossibleAiPlays(cards, lastPlay) {
       Object.values(numberGroups).forEach(group => {
         if (group.length >= 2) {
           const pair = group.slice(0, 2);
-          const hand = analyzeHand(pair);
+          const hand = analyzeHand(pair, playerCount);
           if (hand && compareHands(hand, lastPlay.hand) > 0) {
             possiblePlays.push({ cards: pair, hand });
           }
@@ -619,7 +665,7 @@ function findPossibleAiPlays(cards, lastPlay) {
       Object.values(numberGroups).forEach(group => {
         if (group.length >= 3) {
           const triple = group.slice(0, 3);
-          const hand = analyzeHand(triple);
+          const hand = analyzeHand(triple, playerCount);
           if (hand && compareHands(hand, lastPlay.hand) > 0) {
             possiblePlays.push({ cards: triple, hand });
           }
@@ -628,7 +674,7 @@ function findPossibleAiPlays(cards, lastPlay) {
     } else if (targetLength === 5) {
       const combos = findAllFiveCardCombos(cards);
       combos.forEach(combo => {
-        const hand = analyzeHand(combo);
+        const hand = analyzeHand(combo, playerCount);
         if (hand && compareHands(hand, lastPlay.hand) > 0) {
           possiblePlays.push({ cards: combo, hand });
         }
@@ -695,7 +741,7 @@ const aiPlay = (room, playerIndex) => {
     const strategy = determineStrategy(room, playerIndex, gameState);
     
     if (room.lastPlay.cards.length === 0) {
-      const opening = chooseStrategicOpening(availableCards, gameState, strategy);
+      const opening = chooseStrategicOpening(availableCards, gameState, strategy, room.players.length);
       executeAiPlay(room, playerIndex, opening.cards, opening.hand);
     } else {
       const decision = makeStrategicDecision(room, playerIndex, gameState, strategy);
@@ -1165,7 +1211,7 @@ io.on('connection', (socket) => {
         return;
       }
       
-      const hand = analyzeHand(selectedCards);
+      const hand = analyzeHand(selectedCards, room.players.length);
       
       if (!hand) {
         socket.emit('error', { message: '올바르지 않은 조합입니다.' });
